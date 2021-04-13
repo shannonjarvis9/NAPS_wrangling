@@ -20,7 +20,7 @@ url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-s
 
 mapply(function(url) 
   system(paste("wget -r -np -t1 -nd -APMSPECIATION.zip,_IntegratedPM2.5-10-PM2.5-10Ponctuelles.zip,PMPART25.zip,_IntegratedPM2.5-PM2.5Ponctuelles.zip,_IntegratedPM2.5-10.zip,_IntegratedPM2.5.zip,PMDICHOT.zip", 
-               url)),url = paste0(url_wo_year[1], start_year:end_yr, url_wo_year[2]))
+               url)),url = paste0(url_wo_year[1], start_year:end_year, url_wo_year[2]))
 
 # Rename zip files that are written in french - for consistent naming 
 file.rename(list.files(pattern="PM2.5-10Ponctuelles"), 
@@ -101,4 +101,4 @@ file_path <- paste0(wd$data, "PMPART25/2009_S31001_PART25.XLS")
 tmp <- read.xls(file_path, na.strings = c("NA","", " ", "-", "-999","-999.000"))
 tmp[8:30,1] <- as.character(as.Date(as.character(tmp[8:30,1] ), format = c("%m/%d/%y")))
 
-WriteXLS(tmp, "/home/shannon/NAPS/spec_shan/NAPSdata/PMPART25/2009_S31001_PART25.XLS")
+WriteXLS(tmp, paste0(wd$data,"PMPART25/2009_S31001_PART25.XLS"))
