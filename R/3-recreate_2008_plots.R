@@ -425,10 +425,10 @@ carb_compnd <- comp_station %>%
   mutate(month_text = month(date, label = TRUE, abbr = TRUE)) %>%
   select(city, EC_dat, OM_dat, month_text) %>%
   group_by(city, month_text) %>%
-  dplyr::summarise(EC = median(EC_dat, na.rm = TRUE),  
+  dplyr::summarise(EC = median(EC_dat, na.rm = TRUE)*3,  
                    OM = median(OM_dat, na.rm = TRUE),
-                   lwr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.25),
-                   upr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.75),
+                   lwr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.25)*3,
+                   upr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.75)*3,
                    lwr_quantile_OM = quantile(OM_dat, na.rm = TRUE, probs = 0.25),
                    upr_quantile_OM = quantile(OM_dat, na.rm = TRUE, probs = 0.75)) 
 
@@ -452,6 +452,7 @@ carb_iqr <- bind_rows(om_IQR, ec_IQR)
 # Then merge the IQR back with the original df 
 carb_compnd_median <- carb_compnd %>%
   select(c(city, month_text, OM, EC)) %>%
+  mutate(EC = EC) %>%
   pivot_longer(!c(city, month_text), names_to = "compound", values_to = "median") 
 
 carb_data <- merge(carb_compnd_median, carb_iqr, by = c("city", "month_text", "compound"))
@@ -465,11 +466,17 @@ ggplot(data = carb_data, mapping = aes(x = month_text, y = median, colour = comp
   geom_line() +
   geom_errorbar() +
   facet_wrap(~ city, nrow = 3) + 
-  #scale_y_continuous(limits = c(0, 12), breaks = seq(0,12,2)) + 
+  scale_y_continuous(limits = c(0, 18), breaks = seq(0,18,3),
+                     expression(paste("OM (",mu ,"g/",m^3,")")), 
+                     sec.axis = sec_axis(~ . / 3, name = expression(paste("EC (",mu ,"g/",m^3,")")),
+                                         breaks = seq(0,6,1))) +
   scale_linetype_manual(values = c("EC" = "dashed", "OM" = "solid")) + 
-  labs(y =   expression(paste("Ammonium Sulphate/Ammonium Nitrate (",mu ,"g/",m^3,")")), x = "Month")  + 
-  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
-
+  labs(x = "Month")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) + 
+    theme(axis.line.y.right = element_line(color = "#F8766D"),
+          axis.text.y.right = element_text(color = "#F8766D"),
+          axis.line.y.left = element_line(color = "#00BFC4"),
+          axis.text.y.left = element_text(color = "#00BFC4"))
 
 
 #------------------------------------------------------------------------------
