@@ -171,7 +171,7 @@ pmpart_fine <- lapply(pmpart, function(x){x %>% filter(c_f == "F") %>%
                                           dplyr::mutate(pm2_5 = mass, .after = day) %>%
                                           select(-c("c_f", "mass"))})
 
-pmpart_coarse <- lapply(pmpart, function(x){x %>% filter(c_f == "C") %>%
+pmpart_coarse <- lapply(pmpart, function(x){x %>% filter(c_f != "F") %>%
                                             dplyr::mutate(pm2_5_10 = mass, .after = day) %>%
                                             select(-c("c_f", "mass"))})
 

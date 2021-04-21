@@ -47,6 +47,20 @@ for(s in names(spec)){
 }
 
 
+# Remove field blank observations to a different list
+##----------------------------------------------------------------------------
+field_blanks <- lapply(spec, lapply, function(x){if(length(x) != 0){
+  if("cart" %in% names(x)){x %>% filter(cart %in% c("TB", "FB"))}
+  else if("cartridge" %in% names(x)){x %>% filter(cartridge %in% c("TB", "FB"))} 
+  else if("media" %in% names(x)){x %>% filter(media %in% c("TB", "FB"))}}})
+
+spec <- lapply(spec, lapply, function(x){if(length(x) != 0){
+  if("cart" %in% names(x)){x %>% filter(! cart %in% c("TB", "FB"))}
+  else if("cartridge" %in% names(x)){x %>% filter(! cartridge %in% c("TB", "FB"))} 
+  else if("media" %in% names(x)){x %>% filter(! media %in% c("TB", "FB")) } 
+  else {x}}})
+
+
 
 
 # Dealing with duplicate dates from each data frame
@@ -104,27 +118,17 @@ for(i in 1:length(spec)){
   }
 }
 
+# clean up the lists 
+wicpms_coarse <- list.clean(wicpms_coarse, fun = function(x) nrow(x) == 0L || length(x) == 0L) 
+icpms_coarse <- list.clean(icpms_coarse, fun = function(x) nrow(x) == 0L || length(x) == 0L) 
 
-# Remove field blank observations to a different list
-##----------------------------------------------------------------------------
-field_blanks <- lapply(spec, lapply, function(x){if(length(x) != 0){
-  if("cart" %in% names(x)){x %>% filter(cart %in% c("TB", "FB")) %>% select(-cart)}
-  else if("cartridge" %in% names(x)){x %>% filter(cartridge %in% c("TB", "FB")) %>% select(-cartridge)} 
-  else if("media" %in% names(x)){x %>% filter(media %in% c("TB", "FB")) %>% select(-media)}}})
-
+# Remove the cartridge/media columns - all important info from these cols has been used
 spec <- lapply(spec, lapply, function(x){if(length(x) != 0){
-  if("cart" %in% names(x)){x %>% filter(! cart %in% c("TB", "FB")) %>% select(-cart)}
-  else if("cartridge" %in% names(x)){x %>% filter(! cartridge %in% c("TB", "FB")) %>% select(-cartridge)} 
-  else if("media" %in% names(x)){x %>% filter(! media %in% c("TB", "FB")) %>% select(-media)} 
+  if("cart" %in% names(x)){x %>%  select(-cart)}
+  else if("cartridge" %in% names(x)){x %>% select(-cartridge)} 
+  else if("media" %in% names(x)){x %>% select(-media)} 
   else {x}}})
 
-
-
-
-# Check that each date in the spec file appears only once in a data frame
-check_dates <- lapply(spec, lapply, function(x){if(length(x) != 0){
-  dupl_dates <- nrow(x[duplicated(x$date),])
-  if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
 
 
 ##----------------------------------------------------------------------------
@@ -158,7 +162,7 @@ get_names <- function(col_name, conversion_df) {
 ##----------------------------------------------------------------------------
 ##----------------------------------------------------------------------------
 
-filename <-paste0(wd$header, "spec_header_fixicpms.xlsx")
+filename <-paste0(wd$header, "spec_header.xlsx")
 sheets <- getSheetNames(filename)
 spec_header_dict <- lapply(sheets, read.xlsx, xlsxFile = filename)
 names(spec_header_dict) <- sheets
@@ -180,8 +184,35 @@ for(s in names(spec)){
 }
 
 
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
+## Combine, rename and reformat the coarse data  
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
+spec_coarse <- vector("list")
+
+# add wicpms
+for(s in names(wicpms_coarse)){
+    for(i in 1:ncol(wicpms_coarse[[s]])){
+      names(wicpms_coarse[[s]])[i] <- get_names(names(wicpms_coarse[[s]])[i], spec_header_dict[["WICPMS"]])
+    }
+    spec_coarse[[s]][[na.omit(unique(as.character(spec_header_dict[["WICPMS"]][3,])))]] <- wicpms_coarse[[s]]
+}
+
+# add icpms
+for(s in names(icpms_coarse)){
+  for(i in 1:ncol(icpms_coarse[[s]])){
+    names(icpms_coarse[[s]])[i] <- get_names(names(icpms_coarse[[s]])[i], spec_header_dict[["ICPMS"]])
+  }
+  spec_coarse[[s]][[na.omit(unique(as.character(spec_header_dict[["ICPMS"]][3,])))]] <- icpms_coarse[[s]]
+}
 
 
 
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
+## Save the files 
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
 save(file = paste0(wd$output, "spec_2010_format.rda"), spec)
-
+save(file = paste0(wd$output, "spec_coarse_2010_format.rda"), spec_coarse)
