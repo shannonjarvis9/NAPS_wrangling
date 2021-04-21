@@ -24,10 +24,6 @@ pmpart_fine <- lapply(pmpart, function(x){x %>% filter(c_f == "F") %>%
     dplyr::mutate(pm2_5 = mass, .after = day) %>%
     select(-c("c_f", "mass"))})
 
-pmpart_coarse <- lapply(pmpart, function(x){x %>% filter(c_f == "C") %>%
-    dplyr::mutate(pm2_5_10 = mass, .after = day) %>%
-    select(-c("c_f", "mass"))})
-
 dichot_fine <- lapply(dichot, function(x){x %>% filter(c_f == "F") %>%
     dplyr::mutate(pm2_5 = mass, .after = day) %>%
     select(-c("c_f", "mass")) %>%
@@ -93,12 +89,13 @@ get_empty_list <- function(original_df, conv_scheme){
 # Lets rename the columns and reformat to the 2010+ form
 rename_reformat_pmpart <- function(orig_df,new_df, conv_scheme){
   for(s in names(orig_df)){
-    for(t in 1:length(new_df[[s]])){new_df[[s]][[t]] <- orig_df[[s]][,1:4]} #add date col
-  
-    #col 5 is always the mass
-    colNam <- get_names(names(orig_df[[s]])[5], "NA_mdl", conv_scheme)
-    new_df[[s]][[paste(colNam[3])]] <- 
-      cbind(new_df[[s]][[paste(colNam[3])]], orig_df[[s]][,5]) # there must be a better way to do this!!
+    for (t in names(new_df[[s]])) {
+      if (grepl("PM", t, fixed = TRUE)) {
+        new_df[[s]][[t]] <- orig_df[[s]][, 1:5]
+      } else {
+        new_df[[s]][[t]] <- orig_df[[s]][, 1:4]
+      }
+    }
     
     # rest of col has the particle followed by its detection limit 
     if(ncol(orig_df[[s]]) > 5){
@@ -140,13 +137,17 @@ convert_pmpart <- function(pmpart_df, pmpart_conversion_file){
 
 # Lets convert! 
 pm_fine <- convert_pmpart(pmpart_fine, pmpart_conv_fine)
-pm_coarse <- convert_pmpart(pmpart_coarse, pmpart_conv_coarse)  
+ 
 
 dich_fine <- convert_pmpart(dichot_fine, pmpart_conv_fine)
 dich_coarse <- convert_pmpart(dichot_coarse, pmpart_conv_coarse)  
 
 
-save(file = paste0(wd$output, "pmpart_coarse_2010_format.rda"), pm_coarse)
+
 save(file = paste0(wd$output, "pmpart_fine_2010_format.rda"), pm_fine)
 save(file = paste0(wd$output, "dichot_coarse_2010_format.rda"), dich_coarse)
 save(file = paste0(wd$output, "dichot_fine_2010_format.rda"), dich_fine)
+
+
+
+

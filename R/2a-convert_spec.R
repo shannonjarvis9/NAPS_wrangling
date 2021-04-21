@@ -13,11 +13,6 @@ spec[["S60211"]][["CARB"]] <- spec[["S60211"]][["CARB"]] %>%
   mutate(speciation_mass_ug_m3 =  mas_sp) %>%
   select(-matches('mas_sp'))
 
-for(s in c("S31001", "S70301", "S105001", "S106600")){
-  spec[[s]][["WICPMS"]] <- spec[[s]][["WICPMS"]] %>% 
-    mutate(cartridge =  f_c) %>%
-    select(-matches('f_c'))
-}
 
 for(s in c("S70301", "S105001", "S106600")){
   spec[[s]][["WICPMS"]] <- spec[[s]][["WICPMS"]] %>% 
@@ -40,6 +35,11 @@ for(s in names(spec)){
       select(-c(contains('id')))
   }
   
+  if(length(spec[[s]][["WICPMS"]]) != 0){ # media col is always T or NA 
+    spec[[s]][["WICPMS"]] <- spec[[s]][["WICPMS"]]%>% 
+      select(-c(contains('media')))
+  }
+  
   if(length(spec[[s]][["LEV"]]) != 0){
     spec[[s]][["LEV"]] <- spec[[s]][["LEV"]]%>% 
       select(-c(contains('media')))
@@ -49,33 +49,14 @@ for(s in names(spec)){
 
 
 
-
-
-# Remove field blank observations to a different list
-##----------------------------------------------------------------------------
-field_blanks <- lapply(spec, lapply, function(x){if(length(x) != 0){
-  if("cart" %in% names(x)){x %>% filter(cart %in% c("TB", "FB", "F"))}
-  else if("cartridge" %in% names(x)){x %>% filter(cartridge %in% c("TB", "FB", "F"))} 
-  else if("media" %in% names(x)){x %>% filter(media %in% c("TB", "FB", "F"))}}})
-
-spec <- lapply(spec, lapply, function(x){if(length(x) != 0){
-  if("cart" %in% names(x)){x %>% filter(! cart %in% c("TB", "FB", "F"))}
-  else if("cartridge" %in% names(x)){x %>% filter(! cartridge %in% c("TB", "FB", "F"))} 
-  else if("media" %in% names(x)){x %>% filter(! media %in% c("TB", "FB", "F"))} 
-  else {x}}})
-
-
-
-
-
 # Dealing with duplicate dates from each data frame
-# ICPMS has pm25 and pm10 and total data 
+# ICPMS, WICPMS has fine and coarse data 
 # --------------------------------------------------------------------
 ##----------------------------------------------------------------------------
 #try making this code nicer 
 icpms_coarse <- vector("list", length(spec))
 names(icpms_coarse) <- names(spec)
-
+wicpms_coarse <- icpms_coarse
 
 for(i in 1:length(spec)){
   # Rename carb using cartridge 
@@ -94,7 +75,7 @@ for(i in 1:length(spec)){
                                       values_from = names(spec[[i]][["IC"]])[7:ncol(spec[[i]][["IC"]])])
   }
   
-  # Remove the coarse and total ICPMS data - keep the fine data 
+  # ICPMS has fine and coarse data
   if(length(spec[[i]][["ICPMS"]] ) != 0){
     icpms_coarse[[i]] <- spec[[i]][["ICPMS"]] %>% 
       filter(fraction == "C") %>% 
@@ -109,7 +90,34 @@ for(i in 1:length(spec)){
       filter(fraction == "F") %>% 
       select(-"fraction")
   }
+  
+  # WICPMS has fine and coarse data
+  if(length(spec[[i]][["WICPMS"]] ) != 0 & "f_c" %in% names(spec[[i]][["WICPMS"]])){
+    wicpms_coarse[[i]] <- spec[[i]][["WICPMS"]] %>% 
+      filter(f_c == "C") %>% 
+      select(-"f_c")
+    
+    
+    spec[[i]][["WICPMS"]] <- spec[[i]][["WICPMS"]] %>% 
+      filter(f_c == "F") %>% 
+      select(-"f_c")
+  }
 }
+
+
+# Remove field blank observations to a different list
+##----------------------------------------------------------------------------
+field_blanks <- lapply(spec, lapply, function(x){if(length(x) != 0){
+  if("cart" %in% names(x)){x %>% filter(cart %in% c("TB", "FB")) %>% select(-cart)}
+  else if("cartridge" %in% names(x)){x %>% filter(cartridge %in% c("TB", "FB")) %>% select(-cartridge)} 
+  else if("media" %in% names(x)){x %>% filter(media %in% c("TB", "FB")) %>% select(-media)}}})
+
+spec <- lapply(spec, lapply, function(x){if(length(x) != 0){
+  if("cart" %in% names(x)){x %>% filter(! cart %in% c("TB", "FB")) %>% select(-cart)}
+  else if("cartridge" %in% names(x)){x %>% filter(! cartridge %in% c("TB", "FB")) %>% select(-cartridge)} 
+  else if("media" %in% names(x)){x %>% filter(! media %in% c("TB", "FB")) %>% select(-media)} 
+  else {x}}})
+
 
 
 
