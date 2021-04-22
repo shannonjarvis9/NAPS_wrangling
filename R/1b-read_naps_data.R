@@ -54,6 +54,11 @@ removeEmptyRowsCols <- function(dt_frm){
   #df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]
 }
 
+# Removes rows that has more the n blank values 
+delete_na_rows <- function(df, n) {
+  df[rowSums(is.na(df)) <= n,]
+}
+
 ## Function: removeEmptyRows
 ## -----------------------------------------------------
 ## Inputs: dt_frm:  data frame with all character columns
@@ -97,7 +102,7 @@ getFile <- function(file_path, sheet){
     select(-c(contains("TIME"), "sampling_date", contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1) 
   
-  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)] # remove na
+  delete_na_rows(df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)],4) # remove na
 }
 
 
@@ -126,7 +131,7 @@ getFile_xls <- function(file_path){
     select(-c(contains("TIME"), contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1)
   
-  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]  # remove na
+  delete_na_rows(df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)], 4)  # remove na
 
 }
 

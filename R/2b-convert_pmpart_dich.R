@@ -10,12 +10,9 @@ load(paste0(wd$output, "dichot_read.rda"))
 ## Contains the old column name, new column name, new detection limit column name
 ## and column location 
 ##----------------------------------------------------------------------------
-pmpart_conv_fine <- read_excel(paste0(wd$header, "pmpart_pm25_headers.xlsx"), 
+pmpart_conv <- read_excel(paste0(wd$header, "pmpart_headers.xlsx"), 
                                col_names = FALSE)[,-1]
 
-
-pmpart_conv_coarse <- read_excel(paste0(wd$header,"pmpart_pm10_headers.xlsx"), 
-                                 col_names = FALSE)[,-1]
 
 
 # Separate the data into coarse and fine 
@@ -25,13 +22,13 @@ pmpart_fine <- lapply(pmpart, function(x){x %>% filter(c_f == "F") %>%
     select(-c("c_f", "mass"))})
 
 dichot_fine <- lapply(dichot, function(x){x %>% filter(c_f == "F") %>%
-    dplyr::mutate(pm2_5 = mass, .after = day) %>%
+    dplyr::mutate(dich_pm2_5 = mass, .after = day) %>%
     select(-c("c_f", "mass")) %>%
     distinct(date, .keep_all = TRUE)})
 
 
 dichot_coarse <- lapply(dichot, function(x){x %>% filter(c_f == "C") %>%
-    dplyr::mutate(pm2_5_10 = mass, .after = day) %>%
+    dplyr::mutate(dich_pm2_5_10 = mass, .after = day) %>%
     select(-c("c_f", "mass"))  %>%
     distinct(date, .keep_all = TRUE)})
 
@@ -136,9 +133,21 @@ convert_pmpart <- function(pmpart_df, pmpart_conversion_file){
 
 
 # Lets convert! 
-pm_fine <- convert_pmpart(pmpart_fine, pmpart_conv_fine)
- 
-dich_fine <- convert_pmpart(dichot_fine, pmpart_conv_fine)
+pm_fine <- convert_pmpart(pmpart_fine, pmpart_conv)
+
+pmpart_conv_dich_fine <- pmpart_conv
+pmpart_conv_dich_fine[2,] <- as.list(gsub("pm2_5",  "dich_pm2_5", pmpart_conv_dich_fine[2,]))
+
+dich_fine <- convert_pmpart(dichot_fine, pmpart_conv_dich_fine)
+
+# need to modify pmpart_conv for coarse 
+pmpart_conv_coarse <- pmpart_conv %>% 
+  mutate_all(str_replace_all, "PM2.5", "PM2.5-10") %>% 
+  mutate_all(str_replace_all, "pm2_5", "pm2_5_10") 
+
+pmpart_conv_coarse[2,] <- as.list(gsub("pm2_5_10",  "dich_pm2_5_10", pmpart_conv_coarse[2,]))
+
+
 dich_coarse <- convert_pmpart(dichot_coarse, pmpart_conv_coarse)  
 
 
