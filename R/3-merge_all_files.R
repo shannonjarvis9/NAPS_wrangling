@@ -35,6 +35,28 @@ remove_empty_list <- function(mylist){
              function(x) length(x) == 0L, recursive = FALSE)
 }
 
+#Function: add_missing_cols
+#-------------------------------------------------------------------------------
+# Adds the columns in allCols that aren't present in the data frame df 
+add_missing_cols <- function(df, allCols){
+  missingCol <- allCols[which(! allCols %in% names(df))]
+  
+  if(length(missingCol) != 0L){
+    new_col_idx <- c(ncol(df)+1,ncol(df)+length(missingCol))
+    
+    df[,c(new_col_idx[1] : new_col_idx[2])] <- rep(NA, nrow(df))
+    names(df)[c(new_col_idx[1] : new_col_idx[2])] <- missingCol 
+  }
+  
+  df
+}
+
+# function: compress
+#-------------------------------------------------------------------------------
+compress <- function(x) c(na.omit(x), NA)[1]
+
+
+
 ## pm10 and pm25 have duplicate dates - need to fix! 
 
 
@@ -51,6 +73,10 @@ pm25dat <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
   else if("sampling_type" %in% names(x)){x %>% filter(! sampling_type %in% c("TB", "FB")) %>% select(-sampling_type)} 
   else {x}}})
 
+
+#remove empty elem 
+pm25dat <-  lapply(pm25dat , function(a){list.clean(a, function(x) nrow(x) == 0L, recursive = FALSE)})
+                        
 
 ##------------------------------------------------------------------------------
 ## First step: need to make sure all variables that should be numeric are 
@@ -75,7 +101,8 @@ convert_Char_to_Numeric <- function(data_list){
       data_list[[i]][[j]] <- dplyr::mutate_at(data_list[[i]][[j]], .vars = convert, .funs = as.numeric)
     }
   }
-  data_list
+  #remove empty lists
+  lapply(data_list , function(a){list.clean(a, function(x) nrow(x) == 0L, recursive = FALSE)})
 }
 
 # apply our function to all the data frames 
@@ -105,12 +132,13 @@ for(s in names(NAPS_fine)){
     
     lst <- remove_empty_list(list(dich_fine[[s]][[t]], pm_fine[[s]][[t]], 
                                   pm25dat[[s]][[t]], spec[[s]][[t]]))
+    
+    # For merging, want all df to have the same names - add misisng cols 
     if(! is_empty(lst)){
-      common_names <- data.frame(table(unlist(sapply(lst, names)))) %>%
-        dplyr::filter(Freq == length(lst)) %>%
-        select(- Freq)
-      
-      NAPS_fine[[s]][[t]] <- lst %>% reduce(full_join, by = as.vector(common_names[,1]))
+      lst_names <- sublist_names(lst)
+      tmp <- lapply(lst, function(i){add_missing_cols(i, lst_names)}) %>% reduce(full_join, by = lst_names)
+     
+      NAPS_fine[[s]][[t]]  <- aggregate(tmp[5:ncol(tmp)], tmp[1:4], compress) #aggregrate by date 
     }
   }
 }
@@ -132,12 +160,13 @@ for(s in names(NAPS_coarse)){
     
     lst <- remove_empty_list(list(dich_coarse[[s]][[t]], pm10dat[[s]][[t]], 
                                   spec_coarse[[s]][[t]]))
+    
+    # For merging, want all df to have the same names - add misisng cols 
     if(! is_empty(lst)){
-      common_names <- data.frame(table(unlist(sapply(lst, names)))) %>%
-        dplyr::filter(Freq == length(lst)) %>%
-        select(- Freq)
+      lst_names <- sublist_names(lst)
+      tmp <- lapply(lst, function(i){add_missing_cols(i, lst_names)}) %>% reduce(full_join, by = lst_names)
       
-      NAPS_coarse[[s]][[t]] <- lst %>% reduce(full_join, by = as.vector(common_names[,1]))
+      NAPS_coarse[[s]][[t]]  <- aggregate(tmp[5:ncol(tmp)], tmp[1:4], compress) #aggregate by date 
     }
   }
 }
@@ -194,11 +223,6 @@ check_dates <- lapply(NAPS_coarse, function(x){if(length(x) != 0){
 check_dates <- lapply(NAPS_fine, function(x){if(length(x) != 0){
   dupl_dates <- nrow(x[duplicated(x$date),])
   if(dupl_dates != 0){print(sprintf("Warning: %i dupl dates", dupl_dates))}}})
-
-
-# station_to_fix <-  list.clean(lapply(check_dates, function(x){Filter(Negate(is.null), x)}), 
-#                              function(x) length(x) == 0L, recursive = FALSE)
-
 
 
 
