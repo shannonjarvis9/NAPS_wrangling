@@ -171,7 +171,7 @@ pmpart_fine <- lapply(pmpart, function(x){x %>% filter(c_f == "F") %>%
                                           dplyr::mutate(pm2_5 = mass, .after = day) %>%
                                           select(-c("c_f", "mass"))})
 
-pmpart_coarse <- lapply(pmpart, function(x){x %>% filter(c_f != "F") %>%
+pmpart_coarse <- lapply(pmpart, function(x){x %>% filter(c_f == "C") %>%
                                             dplyr::mutate(pm2_5_10 = mass, .after = day) %>%
                                             select(-c("c_f", "mass"))})
 
@@ -590,7 +590,7 @@ pm25_renamed <- lapply(all_pm25, function(a) lapply(seq_along(a),
                                                     function(i) renameDupl(a[[i]], duplicate_names_pm25, names(a)[i])))
 
 
-
+# merge sublist together 
 combin_pm10 <- lapply(pm10_renamed, function(x){Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c("date", "year", "month", "day"), 
                                                                               all.x = TRUE, all.y = TRUE), x)})
 
