@@ -101,7 +101,8 @@ getFile <- function(file_path, sheet){
     select(-c(contains("TIME"), "sampling_date", contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1) 
   
-  delete_na_rows(df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)],4) # remove na
+  #delete_na_rows(,4) # remove na
+  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]
 }
 
 
@@ -130,7 +131,8 @@ getFile_xls <- function(file_path){
     select(-c(contains("TIME"), contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1)
   
-  delete_na_rows(df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)], 4)  # remove na
+  #delete_na_rows(df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)], 4)  # remove na
+  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]
 }
 
 ## Function: readData

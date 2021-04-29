@@ -22,6 +22,7 @@ source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R')
 # Load the data we already created
 # ------------------------------------------------------------------------------
 load(paste0(wd$output, "NAPS_fine.rda"))
+load(paste0(wd$output, "spec_fieldblanks_2010_format.rda"))
 
 ``` 
 
@@ -49,9 +50,14 @@ NAPS_metadata$city <- factor(NAPS_metadata$city, levels=rev(c("Halifax", "Canter
 pm25_bind <- bind_rows(NAPS_fine, .id = "station") %>%
   clean_names()
 
+fb_bind <- bind_rows(lapply(field_blanks, `[[`, 1), .id = "station") %>%
+  clean_names()
+
+pm25_fb_bind <- merge(pm25_bind, fb_bind[,c("date", "oc_r", "poc_t", "station")], 
+                      by = c("date", "station"), all.x = TRUE, all.y = TRUE) 
 
 # filter for the relevant sites and relevant years 
-spec_R_03_08 <- pm25_bind %>%
+spec_R_03_08 <- pm25_fb_bind %>%
   filter( 2003 <= year & year <= 2008) %>%
   filter( station %in% c("S30113", "S40801", "S50104", "S54401", "S60211", 
                          "S60427", "S62601", "S90132", "S103202", "S101004", "S100119")) 
@@ -218,7 +224,7 @@ ggplot(
 
 # Figure 4: Mean organic carbon (OC) by site 
 Most evident difference from the paper is passive travel and field blank (blue)
-- still working on identifying the correct variables in the data.
+- still working on identifying the correct passive travel variable in the data.
 
 ```{r, echo = FALSE, message = FALSE}
 #------------------------------------------------------------------------------
@@ -226,14 +232,10 @@ Most evident difference from the paper is passive travel and field blank (blue)
 # Figure 4
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
-
-# need to get the field blank data
-
 oc_station <- spec_data %>%
   mutate(mean_oc_cart_a = ocec_cart_a_oc_r) %>%
   mutate(mean_oc_cart_b = ocec_cart_b_oc_r) %>%
-  mutate(passiveTravel_fieldBlank = ocec_cart_a_poc_a) %>%
+  mutate(passiveTravel_fieldBlank = oc_r) %>% # + ocec_cart_b_poc_r) %>%
   dplyr::select("city",
                 "mean_oc_cart_a",
                 "mean_oc_cart_b",
@@ -242,16 +244,13 @@ oc_station <- spec_data %>%
   dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)  %>%
   pivot_longer(!city, names_to = "type", values_to = "val")
 
-
-
-
 ggplot(oc_station, mapping = aes(x = city, y = val, fill = type)) +
   geom_bar(stat = "identity", position = position_dodge()) +
-  scale_fill_discrete(labels = c(
+   scale_fill_discrete(labels = c(
     "Mean OC (QA)",
     "Mean OC Active Blank (QB)",
     "Passive Travel and Field Blank"
-  )) +
+   )) +
   scale_y_continuous(limits = c(0, 8), breaks = 0:8) +
   theme(legend.position = c(0.75, 0.825),
         legend.title = element_blank()) +
@@ -269,20 +268,49 @@ ggplot(oc_station, mapping = aes(x = city, y = val, fill = type)) +
 
 ```
 
-```{r, echo = FALSE, message = FALSE}
+
+```{r}
+spec_data$city <- factor(spec_data$city, levels=rev(c("Halifax", "Canterbury", 
+                              "Saint-Anicet", "Montréal", "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 # Table 4: Compound composition 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+# now lets get the columns needed from spec data 
+comp_station <- spec_data %>%
+  select('city','date', 'month',edxrf_silicon_si, edxrf_calcium_ca, edxrf_iron_fe,  
+         edxrf_titanium_ti, edxrf_potassium_k, speciation_mass_ug_m3, dich_pm2_5)
+
+
+comp_station$SOIL_dat = 3.48*comp_station$edxrf_silicon_si + 1.63*comp_station$edxrf_calcium_ca + 
+                   1.63*comp_station$edxrf_iron_fe + 1.41*comp_station$edxrf_potassium_k +
+                   1.94*comp_station$edxrf_titanium_ti
+
+
+```
+
+
+
+```{r, echo = FALSE, message = FALSE}
+
+spec_data$city <- factor(spec_data$city, levels=rev(c("Halifax", "Canterbury", 
+                              "Saint-Anicet", "Montréal", "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Table 4: Compound composition 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # now lets get the columns needed from spec data 
 comp_station <- spec_data %>%
   select('city','date', 'month', ions_ic_media_t_nitrate, ions_ic_media_t_sulphate, ions_ic_media_t_ammonium,
          ocec_cart_b_oc_b, ions_ic_media_t_potassium, edxrf_silicon_si, edxrf_calcium_ca, edxrf_iron_fe,  
-         edxrf_titanium_ti, ocec_cart_a_ec_a, ions_ic_media_t_sodium, ions_ic_media_t_chloride, 
-         ammonia_ic_cart_c_ammonia, pm2_5, speciation_mass_ug_m3)
+         edxrf_titanium_ti, edxrf_potassium_k, ocec_cart_a_ec_a, ions_ic_media_t_sodium, ions_ic_media_t_chloride, 
+         ammonia_ic_cart_c_ammonia, speciation_mass_ug_m3)
 
 # Ammonium Nitrate (NH4NO3) = [ANO3] = 1.29[NO3 ] # should be teflon filter 
       # Hence, Teflon nitrate was used for mass reconstruction
@@ -301,7 +329,7 @@ comp_station$EC_dat <- comp_station$ocec_cart_a_ec_a
 
 # Crustal matter = [SOIL] = 3.48[Si] + 1.63[Ca] + 2.42[Fe] + 1.41[K] + 1.94[Ti]
 comp_station$SOIL_dat = 3.48*comp_station$edxrf_silicon_si + 1.63*comp_station$edxrf_calcium_ca + 
-                   1.63*comp_station$edxrf_iron_fe + 1.41*comp_station$ions_ic_media_t_potassium +
+                   1.63*comp_station$edxrf_iron_fe + 1.41*comp_station$edxrf_potassium_k +
                    1.94*comp_station$edxrf_titanium_ti
 
 
@@ -406,6 +434,10 @@ ggplot(comp_station_oct_mar, mapping = aes(x = city, y = val,
 # Figure 6: Reconstructed $PM_{2.5}$ mass by 10 highest mass days and site  
 Large differences from the paper - PBW, ASO4, OM
 
+Paper stated that "Mean total mass concentration exceeded 30 mg m3 for the 10 
+highest days at the Ontario and Quebec urban sites in both summer and winter". 
+Statement is not consistent with my findings, mean total mass for those sites
+were (27, 39) for summer and (24, 50) in winter. 
 ```{r, echo = FALSE, message = FALSE, fig.height = 4}
 
 #------------------------------------------------------------------------------
@@ -416,16 +448,16 @@ Large differences from the paper - PBW, ASO4, OM
 
 comp_station_renamed <- comp_station %>%
   dplyr::select("city","month", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", "ANO3_dat", 
-                "ASO4_dat", "PBW_dat", pm2_5, speciation_mass_ug_m3) %>%
+                "ASO4_dat", "PBW_dat", speciation_mass_ug_m3) %>%
   dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", "OM" = "OM_dat", 
                 "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat","PBW" = "PBW_dat" ) 
 
 highest_10_april_sept <-  comp_station_renamed %>%
   filter(4 <= month & month <= 9) %>%
   group_by(city) %>%
-  arrange(desc(pm2_5)) %>%
+  arrange(desc(speciation_mass_ug_m3)) %>%
   slice(1:10) %>%
-  select(-c(pm2_5, month)) %>%
+  select(-c(speciation_mass_ug_m3, month)) %>%
   dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
   pivot_longer(!city, names_to = "type", values_to = "val")
 
@@ -433,9 +465,9 @@ highest_10_april_sept <-  comp_station_renamed %>%
 highest_10_oct_mar <- comp_station_renamed %>% 
   filter(month <= 3 | month >= 10) %>% 
   group_by(city) %>% 
-  arrange(desc(pm2_5)) %>%
+  arrange(desc(speciation_mass_ug_m3)) %>%
   slice(1:10) %>% 
-  select(-c(pm2_5, month)) %>% 
+  select(-c(speciation_mass_ug_m3, month)) %>% 
   dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
   pivot_longer(!city, names_to = "type", values_to = "val")
 
@@ -610,7 +642,7 @@ ggplot(data = carb_data, mapping = aes(x = month_text, y = median, colour = comp
 ```
 
 \newpage 
-
+comp_station_orig <- comp_station_orig[with(comp_station_orig, order(date, city)), ]
 # Figure 9: Median soil and sodium chloride concentrations by site and month 
 Issue with Simcoe data point 
 
@@ -620,6 +652,13 @@ Issue with Simcoe data point
 # Figure 9: SOIL and NaCl
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
+
+# see if there is an observation of SOIL thats weird 
+highest_10_april_sept <-  comp_station %>%
+  filter(city == "Simcoe") %>%
+  filter(month == 5) %>%
+  arrange(desc(SOIL_dat))  %>%
+  select(city, SOIL_dat, NaCl_dat, month, date)
 
 # calculate our summary statisitcs 
 fig9_compnd <- comp_station %>%
