@@ -1,3 +1,8 @@
+#3-merge_all_files.R
+# This script merges all files previously created to generate two lists (coarse
+# and fine data) for all years/data in the 2010+ format
+
+
 # So far we have converted the pre 2010 data into the updated format 
 # Now we need to combine everything together 
 
@@ -22,13 +27,13 @@ load(paste0(wd$output, "dichot_coarse_2010_format.rda"))
 load(paste0(wd$output, "spec_coarse_2010_format.rda"))
 
 # Function: sublist_names
-#-------------------------------------------------------------------------------
+#----------------------------------------------------------------------
 # Get the names of all sublists in mylist 
 sublist_names <- function(mylist){unique(unlist(lapply(mylist, names)))}
 
 
 #Function: remove_empty_list 
-#-------------------------------------------------------------------------------
+#--------------------------------------------------------------------
 # Remove empty elements in the list 
 remove_empty_list <- function(mylist){
   list.clean(lapply(mylist, function(x){Filter(Negate(is.null), x)}) , 
@@ -36,32 +41,29 @@ remove_empty_list <- function(mylist){
 }
 
 #Function: add_missing_cols
-#-------------------------------------------------------------------------------
+#----------------------------------------------------------------------
 # Adds the columns in allCols that aren't present in the data frame df 
-add_missing_cols <- function(df, allCols){
-  missingCol <- allCols[which(! allCols %in% names(df))]
+add_missing_cols <- function(df, allCols) {
+  missingCol <- allCols[which(!allCols %in% names(df))]
   
-  if(length(missingCol) != 0L){
-    new_col_idx <- c(ncol(df)+1,ncol(df)+length(missingCol))
+  if (length(missingCol) != 0L) {
+    new_col_idx <- c(ncol(df) + 1, ncol(df) + length(missingCol))
     
-    df[,c(new_col_idx[1] : new_col_idx[2])] <- rep(NA, nrow(df))
-    names(df)[c(new_col_idx[1] : new_col_idx[2])] <- missingCol 
+    df[, c(new_col_idx[1]:new_col_idx[2])] <- rep(NA, nrow(df))
+    names(df)[c(new_col_idx[1]:new_col_idx[2])] <- missingCol
   }
   
   df
 }
 
-# function: compress
-#-------------------------------------------------------------------------------
+# Function: compress
+#-------------------------------------------
 compress <- function(x) c(na.omit(x), NA)[1]
 
 
 
-## pm10 and pm25 have duplicate dates - need to fix! 
 
-
-## Remove field blanks for 2010+ data
-## Remove the field/text blank samples 
+## Remove the field/test blank samples 
 pm10dat <- lapply(pm10dat, lapply, function(x){if(length(x) != 0){
   if("sample_type" %in% names(x)){x %>% filter(! sample_type %in% c("TB", "FB")) %>% select(-sample_type)}
   else if("sampling_type" %in% names(x)){x %>% filter(! sampling_type %in% c("TB", "FB")) %>% select(-sampling_type)} 
@@ -75,8 +77,7 @@ pm25dat <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
 
 
 #remove empty elem 
-pm25dat <-  lapply(pm25dat , function(a){list.clean(a, function(x) nrow(x) == 0L, recursive = FALSE)})
-                        
+pm25dat <- remove_empty_list(pm25dat)
 
 ##------------------------------------------------------------------------------
 ## First step: need to make sure all variables that should be numeric are 
@@ -90,7 +91,9 @@ pm25dat <-  lapply(pm25dat , function(a){list.clean(a, function(x) nrow(x) == 0L
 ##          that should be double based on criteria (col is char & not called 
 ##          flag, cartridge, media (can be media_t, media_N), sampl
 convert_Char_to_Numeric <- function(data_list){
+  
   df <- data.frame(Station = c(), Colname = c(), type = c())
+  
   for(i in names(data_list)){
     for(j in names(data_list[[i]])){
       char_col <- names(data_list[[i]][[j]])[which(sapply(data_list[[i]][[j]], class) == "character")]
@@ -101,11 +104,10 @@ convert_Char_to_Numeric <- function(data_list){
       data_list[[i]][[j]] <- dplyr::mutate_at(data_list[[i]][[j]], .vars = convert, .funs = as.numeric)
     }
   }
-  #remove empty lists
-  lapply(data_list , function(a){list.clean(a, function(x) nrow(x) == 0L, recursive = FALSE)})
+  remove_empty_list(data_list)
 }
 
-# apply our function to all the data frames 
+# apply the function to all data frames 
 pm25dat <- pm25dat %>% convert_Char_to_Numeric()
 pm10dat <- pm10dat %>% convert_Char_to_Numeric()
 dich_coarse <- dich_coarse %>% convert_Char_to_Numeric()
@@ -117,14 +119,14 @@ spec_coarse <- spec_coarse %>% convert_Char_to_Numeric()
 
 
 #-------------------------------------------------------------------------------
-# Now lets combine all fine PM the data frames!!
+# Now lets combine all fine PM data frames!!
 #-------------------------------------------------------------------------------
 
 stations <- unique(c(names(dich_fine), names(pm_fine), names(pm25dat), names(spec)))
 df_types <- unique(c(sublist_names(pm25dat), sublist_names(spec), sublist_names(dich_fine), 
                      sublist_names(pm_fine)))
 
-NAPS_fine <- vector("list", length(stations))
+NAPS_fine <- vector("list", length(stations)) #create a new list for combined data
 names(NAPS_fine) <- stations
 
 for(s in names(NAPS_fine)){
@@ -133,16 +135,19 @@ for(s in names(NAPS_fine)){
     lst <- remove_empty_list(list(dich_fine[[s]][[t]], pm_fine[[s]][[t]], 
                                   pm25dat[[s]][[t]], spec[[s]][[t]]))
     
-    # For merging, want all df to have the same names - add misisng cols 
+    # For merging, want all df to have the same names - add missing cols 
     if(! is_empty(lst)){
       lst_names <- sublist_names(lst)
       tmp <- lapply(lst, function(i){add_missing_cols(i, lst_names)}) %>% reduce(full_join, by = lst_names)
      
-      NAPS_fine[[s]][[t]]  <- aggregate(tmp[5:ncol(tmp)], tmp[1:4], compress) #aggregrate by date 
+      NAPS_fine[[s]][[t]]  <- aggregate(tmp[5:ncol(tmp)], tmp[1:4], compress) #aggregate by date 
     }
   }
 }
 
+check_dates <- lapply(NAPS_fine, lapply, function(x){if(length(x) != 0){
+  dupl_dates <- nrow(x[duplicated(x$date),])
+  if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
 
 #-------------------------------------------------------------------------------
 # Now lets combine all coarse PM the data frames!!
@@ -161,7 +166,7 @@ for(s in names(NAPS_coarse)){
     lst <- remove_empty_list(list(dich_coarse[[s]][[t]], pm10dat[[s]][[t]], 
                                   spec_coarse[[s]][[t]]))
     
-    # For merging, want all df to have the same names - add misisng cols 
+    # For merging, want all df to have the same names - add missing cols 
     if(! is_empty(lst)){
       lst_names <- sublist_names(lst)
       tmp <- lapply(lst, function(i){add_missing_cols(i, lst_names)}) %>% reduce(full_join, by = lst_names)
@@ -172,6 +177,10 @@ for(s in names(NAPS_coarse)){
 }
 
 
+check_dates <- lapply(NAPS_coarse, lapply, function(x){if(length(x) != 0){
+  dupl_dates <- nrow(x[duplicated(x$date),])
+  if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
+
 
 
 # So now, we have two lists of lists; 
@@ -180,40 +189,45 @@ for(s in names(NAPS_coarse)){
 
 
 #-------------------------------------------------------------------------------
-# Now lets rename column using the file type and convert the data to a list;
-# Station -> data 
+# Now lets rename columns using the file type and merge sublists;
+# Station -> File type -> data ====>  Station -> data 
 #-------------------------------------------------------------------------------
 
+# Scheme for short form naming of file type (b.c. file types has long names)
 file_type_conv <- read_excel(paste0(wd$header, "file_type_conv.xlsx"), 
                              col_names = TRUE)
 
-# function: renameDupl
+
+# function: renameCols
 ##------------------------------------------------
 ## Input: df: data frame
-##        s: name of the df in the list / file type 
+##        s: the file type (name of the df in the list)
 ## Output:  renamed df
-## Process: renames the columns 
-renameCols <- function(df, s){
-  row <- which(file_type_conv[,1] == s)
-  if(!is_empty(row)){
-    names(df)[-c(1:4)] <- paste0(file_type_conv[row,2],"_", names(df)[-c(1:4)])
+## Process: renames the columns using the file type 
+renameCols <- function(df, s) {
+  row <- which(file_type_conv[, 1] == s)
+  
+  if (!is_empty(row)) {
+    names(df)[-c(1:4)] <-
+      paste0(file_type_conv[row, 2], "_", names(df)[-c(1:4)])
   }
   df
 }
 
 
 NAPS_fine <- lapply(NAPS_fine, function(a) lapply(seq_along(a),
-                                                    function(i) renameCols(a[[i]], names(a)[i])))
+                                                  function(i) renameCols(a[[i]], names(a)[i])))
 NAPS_coarse <- lapply(NAPS_coarse, function(a) lapply(seq_along(a), 
-                                                    function(i) renameCols(a[[i]], names(a)[i])))
+                                                      function(i) renameCols(a[[i]], names(a)[i])))
 
 
-# Now merge all sublists 
+# We now have Station -> data  
+# lets merge all sublists s.t. we have a list of df by station
 NAPS_coarse <- lapply(NAPS_coarse, function(x){Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c("date", "year", "month", "day"), 
-                                                                                  all.x = TRUE, all.y = TRUE), x)})
+                                                                                 all.x = TRUE, all.y = TRUE), x)})
 
 NAPS_fine <- lapply(NAPS_fine, function(x){Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c("date", "year", "month", "day"), 
-                                                                                 all.x = TRUE, all.y = TRUE), x)})
+                                                                             all.x = TRUE, all.y = TRUE), x)})
 
 
 check_dates <- lapply(NAPS_coarse, function(x){if(length(x) != 0){
@@ -227,14 +241,13 @@ check_dates <- lapply(NAPS_fine, function(x){if(length(x) != 0){
 
 
 
-## Save the data frames 
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
+## Save the files 
+##----------------------------------------------------------------------------
+##----------------------------------------------------------------------------
 save(file = paste0(wd$output, "NAPS_fine.rda"), NAPS_fine)
 save(file = paste0(wd$output, "NAPS_coarse.rda"), NAPS_coarse)
-
-
-
-
-
 
 
 
