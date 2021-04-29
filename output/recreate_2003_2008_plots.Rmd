@@ -235,7 +235,7 @@ Most evident difference from the paper is passive travel and field blank (blue)
 oc_station <- spec_data %>%
   mutate(mean_oc_cart_a = ocec_cart_a_oc_r) %>%
   mutate(mean_oc_cart_b = ocec_cart_b_oc_r) %>%
-  mutate(passiveTravel_fieldBlank = oc_r) %>% # + ocec_cart_b_poc_r) %>%
+  mutate(passiveTravel_fieldBlank = oc_t) %>% # + ocec_cart_b_poc_r) %>%
   dplyr::select("city",
                 "mean_oc_cart_a",
                 "mean_oc_cart_b",
@@ -269,33 +269,10 @@ ggplot(oc_station, mapping = aes(x = city, y = val, fill = type)) +
 ```
 
 
-```{r}
-spec_data$city <- factor(spec_data$city, levels=rev(c("Halifax", "Canterbury", 
-                              "Saint-Anicet", "Montréal", "Toronto", "Simcoe",
-                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-# Table 4: Compound composition 
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-# now lets get the columns needed from spec data 
-comp_station <- spec_data %>%
-  select('city','date', 'month',edxrf_silicon_si, edxrf_calcium_ca, edxrf_iron_fe,  
-         edxrf_titanium_ti, edxrf_potassium_k, speciation_mass_ug_m3, dich_pm2_5)
-
-
-comp_station$SOIL_dat = 3.48*comp_station$edxrf_silicon_si + 1.63*comp_station$edxrf_calcium_ca + 
-                   1.63*comp_station$edxrf_iron_fe + 1.41*comp_station$edxrf_potassium_k +
-                   1.94*comp_station$edxrf_titanium_ti
-
-
-```
-
 
 
 ```{r, echo = FALSE, message = FALSE}
-
+# Order in the paper changed 
 spec_data$city <- factor(spec_data$city, levels=rev(c("Halifax", "Canterbury", 
                               "Saint-Anicet", "Montréal", "Toronto", "Simcoe",
                              "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
@@ -434,11 +411,13 @@ ggplot(comp_station_oct_mar, mapping = aes(x = city, y = val,
 # Figure 6: Reconstructed $PM_{2.5}$ mass by 10 highest mass days and site  
 Large differences from the paper - PBW, ASO4, OM
 
-Paper stated that "Mean total mass concentration exceeded 30 mg m3 for the 10 
-highest days at the Ontario and Quebec urban sites in both summer and winter". 
-Statement is not consistent with my findings, mean total mass for those sites
-were (27, 39) for summer and (24, 50) in winter. 
+
 ```{r, echo = FALSE, message = FALSE, fig.height = 4}
+
+# Paper stated that "Mean total mass concentration exceeded 30 mg m3 for the 10 
+# highest days at the Ontario and Quebec urban sites in both summer and winter". 
+# Statement is inconsistent with my findings, mean total mass for those sites
+# were (27, 39) for summer and (24, 50) in winter. 
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -514,6 +493,10 @@ ggplot(highest_10_oct_mar,
 # Figure 7: Median ammonium sulphate and ammonium nitrate concentrations by site and month 
 
 ```{r, echo = FALSE, message = FALSE}
+# Order in the paper changed back
+spec_data$city <- factor(spec_data$city, levels=rev(c("Halifax", "Canterbury", 
+                              "Montréal", "Saint-Anicet", "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 # Figure 7: Ammonia Sulphate and Nitrate 
@@ -642,7 +625,7 @@ ggplot(data = carb_data, mapping = aes(x = month_text, y = median, colour = comp
 ```
 
 \newpage 
-comp_station_orig <- comp_station_orig[with(comp_station_orig, order(date, city)), ]
+
 # Figure 9: Median soil and sodium chloride concentrations by site and month 
 Issue with Simcoe data point 
 
@@ -741,7 +724,7 @@ ggplot(data = ammonia_compnd %>% filter(city != "Abbotsford"),
   scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 ```
 
-```{r, echo = FALSE, message = FALSE, fig.height = 2}
+```{r, echo = FALSE, message = FALSE, fig.height = 2, fig.width= 2}
 
 ggplot(data = ammonia_compnd %>% filter(city == "Abbotsford"), 
        mapping = aes(x = month_text, y = Ammonia,group = 1, ymin = lwr_quantile, ymax = upr_quantile)) + 
