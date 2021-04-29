@@ -1,8 +1,18 @@
-library("WriteXLS")
+library(WriteXLS)
 library(pracma)
 library(readxl)
 library(openxlsx)
 library(gdata)
+
+# In this script, the NAPS data files are downloaded and unzipped 
+
+# Downloads the following folders for each year: IntegratedPM2.5-10-PM2.5-10Ponctuelles.zip
+# PMPART25.zip, IntegratedPM2.5-PM2.5Ponctuelles.zip, IntegratedPM2.5-10.zip, 
+# IntegratedPM2.5.zip, PMDICHOT.zip
+
+# The start_year and end_year can be modified 
+
+
 
 setwd(paste0(wd$data))
 
@@ -60,14 +70,11 @@ for(i in dirs){
 }
 
 
-#need to combine PMPART and PMDICHOT - theyre the same files 
-#but theyre not as they are samlped from different systems 
-#system(paste("cp -a", wd$data, "/PMDICHOT/. ", wd$data, "PMPART25/"))
 
 #--------------------------------------------------------------------------------
 # Rename some sheets 
 #--------------------------------------------------------------------------------
-# Sheet Elements_EDXRF becomes Elements_EXDXRF
+# Sheet Elements_EDXRF becomes Elements_EXDXRF (for consistency)
 setwd(paste0(wd$data, "IntegratedPM2.5"))
 
 for(file in list.files(pattern = '.xlsx')){
@@ -88,17 +95,28 @@ for(file in list.files(pattern = '.xlsx')){
   }
 }
 
-
+#--------------------------------------------------------------------------------
+# Manual modification of some files  
+#--------------------------------------------------------------------------------
 # Remove file
-#   File is empty- says Sampling  relocated to 090228 in April 2008
+#   File is empty: says Sampling  relocated to 090228 in April 2008
 file.remove( paste0(wd$data, "PMPART25/2009_S90227_PART25.XLS"))
-file.remove( paste0(wd$data, "PMDICHOT/2009_S90227_DICH.XLS")) #empty file - sampling relocated 
+file.remove( paste0(wd$data, "PMDICHOT/2009_S90227_DICH.XLS")) 
 
 
-# date changes format
+# Date changes format - fix here so it can be read easily later
 # manual manipulation may create problems! be careful!!! 
 file_path <- paste0(wd$data, "PMPART25/2009_S31001_PART25.XLS")
 tmp <- read.xls(file_path, na.strings = c("NA","", " ", "-", "-999","-999.000"))
 tmp[8:30,1] <- as.character(as.Date(as.character(tmp[8:30,1] ), format = c("%m/%d/%y")))
 
 WriteXLS(tmp, paste0(wd$data,"PMPART25/2009_S31001_PART25.XLS"))
+
+
+
+
+
+
+
+
+
