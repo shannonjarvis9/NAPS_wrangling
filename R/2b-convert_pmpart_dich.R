@@ -76,11 +76,12 @@ get_names <- function(col_name, next_col_name, pmpart_conv) {
   
   col <- which(col_name == pmpart_conv[1,])
   
-  if ((is.integer(col) &&
-       length(col) == 0L) | is.na(pmpart_conv[2, col])) {
+  if (is.integer(col) && length(col) == 0L) {
     return(c(col_name, paste0(col_name, "_mdl"), "No file"))
-  }  else {
-    c(pmpart_conv[2, col], pmpart_conv[3, col], pmpart_conv[4, col])
+  }else if (is.na(pmpart_conv[2, col])) {
+    return(c(col_name, paste0(col_name, "_mdl"), "No file"))
+  }else {
+    return(c(pmpart_conv[2, col], pmpart_conv[3, col], pmpart_conv[4, col]))
   }
 }
 
@@ -153,8 +154,7 @@ rename_reformat_pmpart <- function(orig_df, new_df, conv_scheme) {
 convert_pmpart <- function(pmpart_df, pmpart_conversion_file) {
   new_pm_fine_df <- get_empty_list(pmpart_df, pmpart_conversion_file)
   
-  df <-
-    rename_reformat_pmpart(pmpart_df, new_pm_fine_df, pmpart_conversion_file)
+  df <- rename_reformat_pmpart(pmpart_df, new_pm_fine_df, pmpart_conversion_file)
   
   # If a df has 4 columns - remove it (it just has the date columns)
   lapply(df, function(a) {

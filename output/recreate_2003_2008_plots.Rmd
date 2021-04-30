@@ -53,7 +53,7 @@ pm25_bind <- bind_rows(NAPS_fine, .id = "station") %>%
 fb_bind <- bind_rows(lapply(field_blanks, `[[`, 1), .id = "station") %>%
   clean_names()
 
-pm25_fb_bind <- merge(pm25_bind, fb_bind[,c("date", "oc_r", "poc_t", "station")], 
+pm25_fb_bind <- merge(pm25_bind, fb_bind[,c("date", "cart_fb_poc_fb", "oc_r", "station")], 
                       by = c("date", "station"), all.x = TRUE, all.y = TRUE) 
 
 # filter for the relevant sites and relevant years 
@@ -66,6 +66,7 @@ spec_data <- merge(spec_R_03_08, NAPS_metadata, by = "station")
 spec_data <- spec_data[,which(unlist(lapply(spec_data, function(x) !all(is.na(x)))))]
 # spec_data <- select(spec_data, -contains("flag"))
 ```
+
 
 
 ```{r, echo = FALSE, message = FALSE}
@@ -120,8 +121,7 @@ spec_data[,which(names(spec_data) %in% names(df_ocec))] <- df_ocec
 ```
 
 # Table 2: Number of samples by site
-There are differences in the number of observations for all cities. Still need 
-to investigate why. 
+There are differences in the number of observations for all cities. 
 ```{r, echo = FALSE, message = FALSE}
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -223,8 +223,6 @@ ggplot(
 \newpage 
 
 # Figure 4: Mean organic carbon (OC) by site 
-Most evident difference from the paper is passive travel and field blank (blue)
-- still working on identifying the correct passive travel variable in the data.
 
 ```{r, echo = FALSE, message = FALSE}
 #------------------------------------------------------------------------------
@@ -235,7 +233,7 @@ Most evident difference from the paper is passive travel and field blank (blue)
 oc_station <- spec_data %>%
   mutate(mean_oc_cart_a = ocec_cart_a_oc_r) %>%
   mutate(mean_oc_cart_b = ocec_cart_b_oc_r) %>%
-  mutate(passiveTravel_fieldBlank = oc_t) %>% # + ocec_cart_b_poc_r) %>%
+  mutate(passiveTravel_fieldBlank = cart_fb_poc_fb + oc_r) %>% #oc_r + ocec_cart_b_poc_r) %>%
   dplyr::select("city",
                 "mean_oc_cart_a",
                 "mean_oc_cart_b",
