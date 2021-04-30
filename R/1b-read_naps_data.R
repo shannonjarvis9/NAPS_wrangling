@@ -53,8 +53,12 @@ getHeader <- function(file){
 ## Function: removeEmptyRows
 ## -----------------------------------------------------
 ## Process: Removes rows that are all NA (except the date)
- removeEmptyRowsCols <- function(df){
-  df[rowSums(is.na(df)) < ncol(df)-1, colSums(is.na(df))<nrow(df)]
+ removeEmptyRowsCols <- function(dt_frm){
+  #df[rowSums(is.na(df)) < ncol(df)-1, colSums(is.na(df))<nrow(df)]
+  dt_frm[!all(is.na(dt_frm[,2:ncol(dt_frm)])), ] #colSums(is.na(dt_frm))<nrow(dt_frm)]
+     
+  #df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]
+  
 }
 
  
@@ -105,13 +109,15 @@ getFile_xlsx <- function(file_path, sheet){
   names(df) <-  tmp[i,] 
   df_col <- getNumericalCols(df %>%  clean_names())
   
-  df  %>% 
+  df <- df  %>% 
     clean_names()  %>%
     mutate(date = as.Date(as.numeric(sampling_date), origin =  "1899-12-30"), 
            year = year(date), month = month(date), day = day(date)) %>%
     mutate_at(getNumericalCols(df %>%  clean_names()) ,as.numeric)  %>%
     select(-c(contains("TIME"), "sampling_date", contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1) 
+  
+  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)] # remove na
 
 }
 
@@ -137,7 +143,7 @@ getFile_xls <- function(file_path){
   
   df_col <- getNumericalCols( df %>%  clean_names())
   
-  df %>% 
+  df <- df %>% 
     clean_names() %>%
     mutate(date = as.Date(date)) %>%
     mutate(year = year(date), month = month(date), day = day(date)) %>%
@@ -145,6 +151,7 @@ getFile_xls <- function(file_path){
     select(-c(contains("TIME"), contains("naps"))) %>%
     relocate(all_of(c("date", "year", "month", "day")), after = 1)
   
+  df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)] 
 }
 
 
