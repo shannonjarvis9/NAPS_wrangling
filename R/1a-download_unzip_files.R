@@ -14,18 +14,21 @@ library(gdata)
 
 
 
-setwd(paste0(wd$data))
+setwd(paste0(wd$data ))
 
 #--------------------------------------------------------------------------------
 # Get the files from data.ec.gc.ca
 # want 2010+ _IntegratedPM2.5-10-PM2.5-10Ponctuelles.zip, _IntegratedPM2.5-PM2.5Ponctuelles.zip
 # want 2003-2009: PMSPECIATION.zip, PMPART25.zip, PMDICHOT.zip 
+# want hourly data too 
 #--------------------------------------------------------------------------------
 start_year <- 2003 # must be earlier than 2010
 end_year <- 2019
 
 
-url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", "/IntegratedData-DonneesPonctuelles/?lang=en")
+# Integrated data 
+url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", 
+                 "/IntegratedData-DonneesPonctuelles/?lang=en")
 
 
 mapply(function(url) 
@@ -39,6 +42,21 @@ file.rename(list.files(pattern="PM2.5-10Ponctuelles"),
 file.rename(list.files(pattern="PM2.5Ponctuelles"),
             paste0(substring(list.files(pattern="PM2.5Ponctuelles"),1, 4), "_IntegratedPM2.5.zip"))
 
+
+# Hourly data 
+dir.create(paste0(wd$data,"Hourly/" ))
+setwd(paste0(wd$data,"Hourly/" ))
+
+url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", 
+                 "/ContinuousData-DonneesContinu/HourlyData-DonneesHoraires/?lang=en")
+
+
+mapply(function(url) 
+  system(paste("wget -r -np -t1 -nd -A.csv", 
+               url)),url = paste0(url_wo_year[1], start_year:end_year, url_wo_year[2]))
+
+
+setwd(paste0(wd$data ))
 
 #--------------------------------------------------------------------------------
 # Unzip the files
