@@ -149,7 +149,7 @@ kable(tbl_op[,c(1,3,4,2,5)])
 
 # Figure 2: Total $PM_{2.5}$ mass by site 
 There are differences from the boxplot in the paper - several
-outliers are missing (Burnaby, Edmonton)
+outliers are missing (Burnaby, Edmonton) 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3.5}
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -625,8 +625,6 @@ ggplot(data = carb_data, mapping = aes(x = month_text, y = median, colour = comp
 \newpage 
 
 # Figure 9: Median soil and sodium chloride concentrations by site and month 
-Issue with Simcoe data point 
-
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
