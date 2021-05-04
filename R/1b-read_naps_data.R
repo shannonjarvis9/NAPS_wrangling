@@ -7,6 +7,7 @@ library(janitor)
 library(dplyr)
 library(gdata)
 library(lubridate)
+library(rlang) # for is_empty
 
 # In this script, the files within each directory (created in 1a) are read into
 # a list
@@ -15,11 +16,8 @@ source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R') # setup the working 
 
 
 
-
 #--------------------------------------------------------------------------------  
 # Let's define some functions to use later
-
-# Needed different 
 #--------------------------------------------------------------------------------
 
 ## Function: getHeader
@@ -53,16 +51,16 @@ getHeader <- function(file){
 ## Function: removeEmptyRows
 ## -----------------------------------------------------
 ## Process: Removes rows that are all NA (except the date)
- removeEmptyRowsCols <- function(dt_frm){
+removeEmptyRowsCols <- function(dt_frm){
   #df[rowSums(is.na(df)) < ncol(df)-1, colSums(is.na(df))<nrow(df)]
   dt_frm[!all(is.na(dt_frm[,2:ncol(dt_frm)])), ] #colSums(is.na(dt_frm))<nrow(dt_frm)]
-     
+  
   #df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)]
   
 }
 
- 
- 
+
+
 ## Function: getNumericalCols
 ## -----------------------------------------------------
 ## Output: list of cols to convert to numeric 
@@ -96,18 +94,34 @@ delete_na_rows <- function(df, n) {
 ## Output: a data frame with the appropriately formatted data frame column names 
 ## For 2011+ NAPS data
 getFile_xlsx <- function(file_path, sheet){
-
-  tmp <- suppressMessages(read_excel(file_path, sheet = sheet, col_names = FALSE,
-                                     na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE))
+  
+  #tmp <- suppressMessages(read_excel(file_path, sheet = sheet, col_names = FALSE,
+  #                                   na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE))
+  tmp <- read_excel(file_path, sheet = sheet, col_names = FALSE,
+                                     na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE)
+  
   i <- getHeader(tmp)
   
-  if(i == 0){
-    return(stop(paste0("Header cannot be found in ", file_path, ", stopping exectution.")))
-  }
+  if(i == 0){stop(paste0("Header cannot be found in ", file_path, ", stopping exectution."))}
   
   df <- removeEmptyRowsCols(tmp[i+1:nrow(tmp),])
-  names(df) <-  tmp[i,] 
+  names(df) <-as.character(as.vector(tmp[i,]))
   df_col <- getNumericalCols(df %>%  clean_names())
+  
+  # need the sampler info 
+  row <- which(tmp[,1] == "Sampler")
+  if(is_empty(row)){
+    warning(paste0("Sampler info cannot be found in ", file_path, ", ", sheet))
+  } else {
+    sampler <- sub("N/A|Sampler", NA, as.character(as.vector(tmp[row,])) , ignore.case = TRUE)
+    if(sheet == "PM2.5" | sheet == "PM2.5-10"){ # length(na.omit(unique(sampler))) >= 2){
+      idx_sampler <- which(!is.na(sampler))
+      sampler <- sub("S-1","", sampler)
+      sampler <- sub("S-2", "spec", sampler) 
+      names(df)[idx_sampler] <- paste0(sampler[idx_sampler], "_", names(df)[idx_sampler])
+    }
+  }
+  
   
   df <- df  %>% 
     clean_names()  %>%
@@ -118,7 +132,7 @@ getFile_xlsx <- function(file_path, sheet){
     relocate(all_of(c("date", "year", "month", "day")), after = 1) 
   
   df[rowSums(is.na(df))<ncol(df),colSums(is.na(df))<nrow(df)] # remove na
-
+  
 }
 
 
@@ -182,7 +196,7 @@ readData_xlsx_sheets <- function(dir){
         lst[[stn]][[t]] <- tmp
       }else {
         lst[[stn]][[t]] <- merge(lst[[stn]][[t]], tmp, all.x = TRUE, all.y = TRUE,
-                                    by = intersect(names(lst[[stn]][[t]]), names(tmp)))
+                                 by = intersect(names(lst[[stn]][[t]]), names(tmp)))
       }
       print(sprintf("Read %s, sheet %s",FilesSheets$files[i], t))
     }
@@ -212,7 +226,7 @@ readData_xls_nosheets <- function(dir){
       lst[[station[i]]] <- tmp
     }else {
       lst[[station[i]]] <- merge(lst[[station[i]]], tmp, all.x = TRUE, all.y = TRUE,
-                                    by = intersect(names(lst[[station[i]]]), names(tmp)))
+                                 by = intersect(names(lst[[station[i]]]), names(tmp)))
       
     }
     print(sprintf("Read %s, %.1f %% read",files[i], round((i/length(files))*100,2)))
@@ -250,7 +264,7 @@ readData_xls_sheets <- function(dir){
       lst[[station[i]]][[file_type[i]]] <- tmp
     }else {
       lst[[station[i]]][[file_type[i]]] <- merge(lst[[station[i]]][[file_type[i]]], tmp, all.x = TRUE, all.y = TRUE,
-                                                    by = intersect(names(lst[[station[i]]][[file_type[i]]]), names(tmp)))
+                                                 by = intersect(names(lst[[station[i]]][[file_type[i]]]), names(tmp)))
     }
     print(sprintf("Read %s, %s, %s",files[i], station[i], file_type[i]))
   }
@@ -303,3 +317,10 @@ save(file = paste0(wd$output, "pmpart_read.rda"), pmpart)
 save(file = paste0(wd$output, "pm10_read.rda"), pm10dat)
 save(file = paste0(wd$output, "pm25_read.rda"), pm25dat)
 save(file = paste0(wd$output, "dichot_read.rda"), dichot)
+
+
+
+
+
+
+
