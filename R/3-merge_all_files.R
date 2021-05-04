@@ -1,3 +1,5 @@
+library(purrr)
+
 #3-merge_all_files.R
 # This script merges all files previously created to generate two lists (coarse
 # and fine data) for all years/data in the 2010+ format
