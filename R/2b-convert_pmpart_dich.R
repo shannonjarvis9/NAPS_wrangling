@@ -32,7 +32,7 @@ pmpart_conv <- read_excel(paste0(wd$header, "pmpart_headers.xlsx"),
 # Separate the data into coarse and fine 
 ##------------------------------------------------------------------------------
 pmpart_fine <- lapply(pmpart, function(x){x %>% filter(c_f == "F") %>%
-    dplyr::mutate(pm2_5 = mass, .after = day) %>%
+    dplyr::mutate(spec_pm2_5 = mass, .after = day) %>%
     select(-c("c_f", "mass"))})
 
 
@@ -68,20 +68,20 @@ dichot_coarse <- lapply(dichot, function(x){x %>% filter(c_f == "C") %>%
 ##---------------------------------
 ## Inputs: col_name: column name to match with 2010+ col names 
 ##         next_col_name: name of the adjacent column (corresponds to the dl col)
-##         pmpart_conv: df of the conversion structure 
+##         conversion: df of the conversion structure 
 ## Outputs: vector containing the new column names and the new file type
-get_names <- function(col_name, next_col_name, pmpart_conv) {
+get_names <- function(col_name, next_col_name, conversion) {
   if (grep('d_l|mdl', next_col_name) == 0L)
     stop("Second argument to function must contain `d_l`")
   
-  col <- which(col_name == pmpart_conv[1,])
+  col <- which(col_name == conversion[1,])
   
   if (is.integer(col) && length(col) == 0L) {
     return(c(col_name, paste0(col_name, "_mdl"), "No file"))
-  }else if (is.na(pmpart_conv[2, col])) {
+  }else if (is.na(conversion[2, col])) {
     return(c(col_name, paste0(col_name, "_mdl"), "No file"))
   }else {
-    return(c(pmpart_conv[2, col], pmpart_conv[3, col], pmpart_conv[4, col]))
+    return(c(conversion[2, col], conversion[3, col], conversion[4, col]))
   }
 }
 
@@ -175,16 +175,14 @@ convert_pmpart <- function(pmpart_df, pmpart_conversion_file) {
 
 # modify the conversion scheme for dich fine data
 pmpart_conv_dich_fine <- pmpart_conv
-pmpart_conv_dich_fine[2,] <- as.list(gsub("pm2_5",  "dich_pm2_5", pmpart_conv_dich_fine[2,]))
+pmpart_conv_dich_fine[2,] <- as.list(gsub("spec_pm2_5",  "dich_pm2_5", pmpart_conv_dich_fine[2,]))
 
 
 
 # modify the conversion scheme for dich coarse data
 pmpart_conv_coarse <- pmpart_conv %>% 
   mutate_all(str_replace_all, "PM2.5", "PM2.5-10") %>% 
-  mutate_all(str_replace_all, "pm2_5", "pm2_5_10") 
-
-pmpart_conv_coarse[2,] <- as.list(gsub("pm2_5_10",  "dich_pm2_5_10", pmpart_conv_coarse[2,]))
+  mutate_all(str_replace_all, "spec_pm2_5", "dich_pm2_5_10") 
 
 
 # Let's call our functions! 
