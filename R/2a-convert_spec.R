@@ -1,5 +1,6 @@
 library(tidyr)
 library(rlist)
+
 # 2a-convert_spec.R
 # In this script, the list of spec data is converted to the appropriate format 
 # for merging in subsequent scripts 
