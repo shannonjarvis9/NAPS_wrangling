@@ -40,6 +40,11 @@ remove_empty_list <- function(mylist){
              function(x) length(x) == 0L, recursive = FALSE)
 }
 
+remove_emptyrow_list <- function(mylist){
+  list.clean(lapply(mylist, function(x){Filter(Negate(is.null), x)}) , 
+             function(x) nrow(x) == 0L, recursive = FALSE)
+}
+
 #Function: add_missing_cols
 #----------------------------------------------------------------------
 # Adds the columns in allCols that aren't present in the data frame df 
@@ -78,6 +83,7 @@ pm25dat <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
 
 #remove empty elem 
 pm25dat <- remove_empty_list(pm25dat)
+spec <- lapply(spec, remove_emptyrow_list)
 
 ##------------------------------------------------------------------------------
 ## First step: need to make sure all variables that should be numeric are 
@@ -182,6 +188,7 @@ check_dates <- lapply(NAPS_coarse, lapply, function(x){if(length(x) != 0){
   if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
 
 
+library(purrr)
 
 # So now, we have two lists of lists; 
 # NAPS_fine: Station -> File type -> All data 
