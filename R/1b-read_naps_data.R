@@ -91,14 +91,13 @@ delete_na_rows <- function(df, n) {
 ## -----------------------------------------------------
 ## Inputs: file_path: path of excel file to be read
 ##         sheet: sheet of file to be read 
+##         SamplerInfo: description and code of sampler
 ## Output: a data frame with the appropriately formatted data frame column names 
 ## For 2011+ NAPS data
-getFile_xlsx <- function(file_path, sheet){
+getFile_xlsx <- function(file_path, sheet, samplerInfo){
   
-  #tmp <- suppressMessages(read_excel(file_path, sheet = sheet, col_names = FALSE,
-  #                                   na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE))
-  tmp <- read_excel(file_path, sheet = sheet, col_names = FALSE,
-                                     na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE)
+  tmp <- suppressMessages(read_excel(file_path, sheet = sheet, col_names = FALSE,
+                                     na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE))
   
   i <- getHeader(tmp)
   
@@ -108,20 +107,36 @@ getFile_xlsx <- function(file_path, sheet){
   names(df) <-as.character(as.vector(tmp[i,]))
   df_col <- getNumericalCols(df %>%  clean_names())
   
-  # need the sampler info 
-  row <- which(tmp[,1] == "Sampler")
-  if(is_empty(row)){
-    warning(paste0("Sampler info cannot be found in ", file_path, ", ", sheet))
-  } else {
-    sampler <- sub("N/A|Sampler", NA, as.character(as.vector(tmp[row,])) , ignore.case = TRUE)
-    if(sheet == "PM2.5" | sheet == "PM2.5-10"){ # length(na.omit(unique(sampler))) >= 2){
-      idx_sampler <- which(!is.na(sampler))
-      sampler <- sub("S-1","", sampler)
-      sampler <- sub("S-2", "spec", sampler) 
-      names(df)[idx_sampler] <- paste0(sampler[idx_sampler], "_", names(df)[idx_sampler])
+  # need the filter info 
+  if(sheet == "Ions-Spec_IC"){
+    row <- which(tmp[,1] == "Medium")
+    if(is_empty(row)){
+      warning(paste0("Medium info cannot be found in ", file_path, ", ", sheet))
+    } else {
+      med <- sub("N/A|Medium", NA, as.character(as.vector(tmp[row,])) , ignore.case = TRUE)
+      idx_med <- which(!is.na(med))
+      names(df)[idx_med] <- paste0(med[idx_med], "_", names(df)[idx_med])
     }
   }
-  
+  # need the sampler info 
+  row <- which(tmp[,1] == "Sampler")
+    if(is_empty(row)){
+      warning(paste0("Sampler info cannot be found in ", file_path, ", ", sheet))
+    } else if(nrow(samplerInfo) != 0){
+      sampler <- sub("N/A|Sampler", NA, as.character(as.vector(tmp[row,])) , ignore.case = TRUE)
+      idx_sampler <- which(!is.na(sampler))
+      
+      #get the values from the Station dictionary
+      S1_val <-as.character(samplerInfo %>% filter(SamplerNum == "S-1") %>% select(type)) 
+      S2_val <- as.character(samplerInfo %>% filter(SamplerNum == "S-2") %>% select(type))
+      
+      #add spec/dich to the names if needed 
+      sampler <- sub("S-1", if(S1_val == "character(0)"){""}else{S1_val}, sampler)
+      sampler <- sub("S-2", if(S2_val == "character(0)"){""}else{S2_val}, sampler) 
+      
+      names(df)[idx_sampler] <- paste0(sampler[idx_sampler], "_", names(df)[idx_sampler])
+    }
+   
   
   df <- df  %>% 
     clean_names()  %>%
@@ -177,9 +192,11 @@ getFile_xls <- function(file_path){
 ##         List is arranged as Station -> Sheet name -> Data 
 readData_xlsx_sheets <- function(dir){
   FilesSheets <- getFilesandSheets(dir)
+  SamplerDict <- getSamplerInfo(dir)
   
   # generate the header data frame
   station <- unlist(lapply(strsplit(FilesSheets$files, "_"), "[[", 4)) 
+  year <- unlist(lapply(strsplit(FilesSheets$files, "_|/"), "[[", 10)) 
   lst <- vector("list", length(unique(station)))
   names(lst) <- unique(station)
   
@@ -190,8 +207,12 @@ readData_xlsx_sheets <- function(dir){
   
   for(i in 1:length(FilesSheets$files)){
     stn <- station[i]
+    yr <- year[i]
+
     for(t in FilesSheets$sheetnames[FilesSheets$sheetnames %in% excel_sheets(FilesSheets$files[i])]){
-      tmp <- getFile_xlsx(FilesSheets$files[i], t)
+      tmp <- getFile_xlsx(FilesSheets$files[i], t, 
+                          SamplerDict %>% filter(Station == !!stn & Year == !!yr))
+      
       if(length(lst[[stn]][[t]]) == 0){
         lst[[stn]][[t]] <- tmp
       }else {
@@ -289,6 +310,49 @@ getFilesandSheets <- function(d){
 
 
 
+## Function: getSamplerInfo
+##--------------------------------------------------
+## Input: dir: the directory of files 
+## Output: a data frame containing the stations, years, sampler name and code
+## Process: Reads the station info for each file to extract the sampler names and 
+## corresponding code - requires time as it read all files in the provided dir
+getSamplerInfo <- function(dir){
+  files <- list.files(path = paste0(wd$data, dir), full.names = TRUE)
+  file_names <- list.files(path = paste0(wd$data, dir), full.names = FALSE)
+  station <- unlist(lapply(strsplit(file_names, "_"), "[[", 2))
+  year <- unlist(lapply(strsplit(file_names, "_|\\."), "[[", 1)) 
+  
+  sampler_dict <- data.frame(Description = c(), Sampler = c(), 
+                             SamplerNum = c(), Station = c(), Year = c())
+  
+  for(i in 1:length(files)){
+    tmp <- suppressMessages(read_excel(files[i], sheet = "Station Info", col_names = FALSE,
+                                       na = c("NA","", " ", "-", "-999","-999.000"), trim_ws = TRUE))
+    
+    c1 <- tmp %>% pull(`...1`)
+    row <- grep("Sampler #", c1)
+    
+    samplers<- tmp[row+1,]
+    samplers$sample <- str_match_all(c1[row], "(?<=\\().+?(?=\\))")
+    samplers$station <- rep(station[i], length(row))
+    samplers$year <- rep(year[i], length(row))
+    names(samplers) <- c("Description","Sampler", "SamplerNum", "Station", "Year") 
+    
+    
+    sampler_dict <- rbind(sampler_dict, samplers)
+    rm(samplers)
+  }
+  
+  all_samplers <- unique(sampler_dict) %>% 
+    filter(Description == "Description") 
+  
+  all_spec_dich <- filter(all_samplers, grepl('dich|spec', all_samplers$Sampler, ignore.case = TRUE))
+  
+  mutate(all_spec_dich, type = ifelse(
+    grepl('spec', all_spec_dich$Sampler, ignore.case = TRUE), "spec", "dich"))
+  
+}
+
 
 
 #--------------------------------------------------------------------------------  
@@ -317,7 +381,6 @@ save(file = paste0(wd$output, "pmpart_read.rda"), pmpart)
 save(file = paste0(wd$output, "pm10_read.rda"), pm10dat)
 save(file = paste0(wd$output, "pm25_read.rda"), pm25dat)
 save(file = paste0(wd$output, "dichot_read.rda"), dichot)
-
 
 
 
