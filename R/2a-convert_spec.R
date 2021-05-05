@@ -71,6 +71,7 @@ for(s in names(spec)){
     spec[[s]][["LEV"]] <- spec[[s]][["LEV"]]%>% 
       select(-c(contains('media')))
   }
+  
 }
 
 
@@ -113,12 +114,12 @@ for(i in 1:length(spec)){
   # Rename IC using media (nylon/teflon filter)
   if(length(spec[[i]][["IC"]] ) != 0){
     spec[[i]][["IC"]] <-  pivot_wider(spec[[i]][["IC"]], names_from = "media", 
-                                      names_glue = "media_{media}_{.value}", names_prefix = "media_",
+                                      names_glue = "{media}F_{.value}",
                                       values_from = names(spec[[i]][["IC"]])[7:ncol(spec[[i]][["IC"]])])
   }
   if(length(field_blanks[[i]][["IC"]] ) != 0){
     field_blanks[[i]][["IC"]] <-  pivot_wider(field_blanks[[i]][["IC"]], names_from = "media", 
-                                              names_glue = "media_{media}_{.value}", names_prefix = "media_",
+                                              names_glue = "{media}F_{.value}",
                                               values_from = names(field_blanks[[i]][["IC"]])[7:ncol(field_blanks[[i]][["IC"]])])
   }
   
@@ -208,14 +209,16 @@ get_names <- function(col_name, conversion_df) {
 ##         header_dict- name conversion scheme, a list
 ## Process: iterates through the input list (df) to rename each column and list
 ##          to match the format of the header dictionary 
-rename_df <- function(df, header_dict) {
+rename_df <- function(df, header_dict, type) {
   for (s in names(df)) {
     for (t in names(df[[s]])) {
       if (length(df[[s]][[t]]) != 0) {
         for (i in 1:ncol(df[[s]][[t]])) {
-          names(df[[s]][[t]])[i] <-
+          names(df[[s]][[t]])[i] <- 
             get_names(names(df[[s]][[t]])[i], header_dict[[t]])
         }
+        names(df[[s]][[t]])[5:ncol(df[[s]][[t]])] <- paste0(type, "_",
+                                                            names(df[[s]][[t]])[5:ncol(df[[s]][[t]])])
       }
       type_idx <- which(names(df[[s]]) == t)
       names(df[[s]])[[type_idx]] <-
@@ -228,8 +231,8 @@ rename_df <- function(df, header_dict) {
 
 
 
-spec <- rename_df(spec, spec_header_dict)
-field_blanks <- rename_df(field_blanks, spec_header_dict)
+spec <- rename_df(spec, spec_header_dict, "spec")
+field_blanks <- rename_df(field_blanks, spec_header_dict, "spec")
 
 
 ##----------------------------------------------------------------------------

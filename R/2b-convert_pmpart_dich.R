@@ -5,6 +5,8 @@
 # Data is divided into coarse and fine, columns are renamed using a conversion
 # scheme s.t. it matches the post 2010 data 
 
+# Pmpart and dich is all teflon filters (info from NAPS 2003-2008 paper)
+
 # Setup/load the necessary files 
 # ------------------------------------------------------------------------------
 
@@ -112,7 +114,7 @@ get_empty_list <- function(original_df, conv_scheme) {
 ##        new_df: empty df with the 2010+ format 
 ##        conv_scheme: header dictionary with col names and new location
 # Fills the new_df with the orig_df using the conv_scheme
-rename_reformat_pmpart <- function(orig_df, new_df, conv_scheme) {
+rename_reformat_pmpart <- function(orig_df, new_df, conv_scheme, type) {
   for (s in names(new_df)) {
     
     # Start by adding the dates/pm mass 
@@ -130,7 +132,7 @@ rename_reformat_pmpart <- function(orig_df, new_df, conv_scheme) {
         colNam <-
           get_names(names(orig_df[[s]])[i], names(orig_df[[s]])[i + 1],
                     conv_scheme)
-        names(orig_df[[s]])[c(i, i + 1)] <- colNam[c(1, 2)]
+        names(orig_df[[s]])[c(i, i + 1)] <- paste0(type,"_", colNam[c(1, 2)])
         
         new_df[[s]][[paste(colNam[3])]] <-
           cbind(new_df[[s]][[paste(colNam[3])]], orig_df[[s]][, c(i, i + 1)]) 
@@ -151,10 +153,10 @@ rename_reformat_pmpart <- function(orig_df, new_df, conv_scheme) {
 ##            station -> file type -> data 
 ## Combines the helper functions to convert the pmpart (pre-2010) data into the 
 ## 2010 + format 
-convert_pmpart <- function(pmpart_df, pmpart_conversion_file) {
+convert_pmpart <- function(pmpart_df, pmpart_conversion_file, type) {
   new_pm_fine_df <- get_empty_list(pmpart_df, pmpart_conversion_file)
   
-  df <- rename_reformat_pmpart(pmpart_df, new_pm_fine_df, pmpart_conversion_file)
+  df <- rename_reformat_pmpart(pmpart_df, new_pm_fine_df, pmpart_conversion_file, type)
   
   # If a df has 4 columns - remove it (it just has the date columns)
   lapply(df, function(a) {
@@ -186,9 +188,9 @@ pmpart_conv_coarse <- pmpart_conv %>%
 
 
 # Let's call our functions! 
-pm_fine <- convert_pmpart(pmpart_fine, pmpart_conv)
-dich_fine <- convert_pmpart(dichot_fine, pmpart_conv_dich_fine)
-dich_coarse <- convert_pmpart(dichot_coarse, pmpart_conv_coarse)  
+pm_fine <- convert_pmpart(pmpart_fine, pmpart_conv, "spec")
+dich_fine <- convert_pmpart(dichot_fine, pmpart_conv_dich_fine, "dich")
+dich_coarse <- convert_pmpart(dichot_coarse, pmpart_conv_coarse, "dich")  
 
 
 
