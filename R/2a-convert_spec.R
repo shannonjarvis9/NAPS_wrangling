@@ -1,5 +1,6 @@
 library(tidyr)
 library(rlist)
+library(janitor)
 
 # 2a-convert_spec.R
 # In this script, the list of spec data is converted to the appropriate format 
@@ -196,9 +197,9 @@ get_names <- function(col_name, conversion_df) {
   
   if ((is.integer(col) &&
        length(col) == 0L) | is.na(conversion_df[2, col])) {
-    return(col_name)
+    return(tolower(col_name))
   } else {
-    return(conversion_df[2, col])
+    return(tolower(conversion_df[2, col]))
   }
 }
 
@@ -225,7 +226,7 @@ rename_df <- function(df, header_dict, type) {
         na.omit(unique(as.character(header_dict[[t]][3, ])))
     }
   }
-  df
+  df 
 }
 
 

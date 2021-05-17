@@ -2,6 +2,7 @@
 # In this script, the hourly PM10 and PM25 data is read and aggregated to a 
 # single daily observation
 
+# Still in progress - issues transforming the hourly data to numerical 
 library(stringr)
 
 # Setup/load the necessary files 

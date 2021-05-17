@@ -8,6 +8,7 @@ library(purrr)
 # So far we have converted the pre 2010 data into the updated format 
 # Now we need to combine everything together 
 
+
 # We have;
 # spec_2010_format.rda
 # pmpart_fine_2010_format.rda
@@ -23,6 +24,7 @@ load(paste0(wd$output, "pm25_read.rda"))
 load(paste0(wd$output, "spec_2010_format.rda"))
 load(paste0(wd$output, "pmpart_fine_2010_format.rda"))
 load(paste0(wd$output, "dichot_fine_2010_format.rda"))
+load(paste0(wd$output, "spec_fieldblanks_2010_format.rda"))
 
 load(paste0(wd$output, "pm10_read.rda"))
 load(paste0(wd$output, "dichot_coarse_2010_format.rda"))
@@ -71,11 +73,18 @@ compress <- function(x) c(na.omit(x), NA)[1]
 
 
 ## Remove the field/test blank samples 
+field_blanks_pm10 <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
+  if("sample_type" %in% names(x)){x %>% filter(sample_type  %in% c("TB", "FB"))}
+  else if("sampling_type" %in% names(x)){x %>% filter(sampling_type %in% c("TB", "FB"))}}})
+
 pm10dat <- lapply(pm10dat, lapply, function(x){if(length(x) != 0){
   if("sample_type" %in% names(x)){x %>% filter(! sample_type %in% c("TB", "FB")) %>% select(-sample_type)}
   else if("sampling_type" %in% names(x)){x %>% filter(! sampling_type %in% c("TB", "FB")) %>% select(-sampling_type)} 
   else {x}}})
 
+field_blanks_pm25 <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
+  if("sample_type" %in% names(x)){x %>% filter(sample_type  %in% c("TB", "FB"))}
+  else if("sampling_type" %in% names(x)){x %>% filter(sampling_type %in% c("TB", "FB"))}}})
 
 pm25dat <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
   if("sample_type" %in% names(x)){x %>% filter(! sample_type %in% c("TB", "FB")) %>% select(-sample_type)}
@@ -83,9 +92,13 @@ pm25dat <- lapply(pm25dat, lapply, function(x){if(length(x) != 0){
   else {x}}})
 
 
+
+
 #remove empty elem 
 pm25dat <- remove_empty_list(pm25dat)
 spec <- lapply(spec, remove_emptyrow_list)
+
+field_blanks_pm25 <- lapply(field_blanks_pm25, remove_emptyrow_list)
 
 ##------------------------------------------------------------------------------
 ## First step: need to make sure all variables that should be numeric are 
@@ -109,7 +122,9 @@ convert_Char_to_Numeric <- function(data_list){
       convert <- c(grep("flag|cart|media|sampl", char_col, invert = TRUE, value = TRUE),
                    grep("media_T|media_N", char_col, value = TRUE))
       
-      data_list[[i]][[j]] <- dplyr::mutate_at(data_list[[i]][[j]], .vars = convert, .funs = as.numeric)
+      if(!is_empty(convert)){
+        data_list[[i]][[j]] <- dplyr::mutate_at(data_list[[i]][[j]], .vars = convert, .funs = as.numeric)
+      }
     }
   }
   remove_empty_list(data_list)
@@ -123,8 +138,9 @@ dich_fine <- dich_fine %>% convert_Char_to_Numeric()
 pm_fine <- pm_fine %>% convert_Char_to_Numeric()
 spec <- spec %>% convert_Char_to_Numeric()
 spec_coarse <- spec_coarse %>% convert_Char_to_Numeric()
-
-
+field_blanks_pm25 <- field_blanks_pm25 %>% convert_Char_to_Numeric()
+field_blanks_pm10 <- field_blanks_pm10 %>% convert_Char_to_Numeric()
+field_blanks <- field_blanks %>% convert_Char_to_Numeric()
 
 #-------------------------------------------------------------------------------
 # Now lets combine all fine PM data frames!!
@@ -154,6 +170,35 @@ for(s in names(NAPS_fine)){
 }
 
 check_dates <- lapply(NAPS_fine, lapply, function(x){if(length(x) != 0){
+  dupl_dates <- nrow(x[duplicated(x$date),])
+  if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
+
+#-------------------------------------------------------------------------------
+# Now lets combine all fine field blank data frames!!
+#-------------------------------------------------------------------------------
+
+stations <- unique(c(names(field_blanks), names(field_blanks_pm25)))
+df_types <- unique(c(sublist_names(field_blanks), sublist_names(field_blanks_pm25)))
+
+NAPS_fine_fb <- vector("list", length(stations)) #create a new list for combined data
+names(NAPS_fine_fb) <- stations
+
+for(s in names(NAPS_fine_fb)){
+  for(t in df_types){ 
+    
+    lst <- remove_empty_list(list(field_blanks[[s]][[t]], field_blanks_pm25[[s]][[t]]))
+    
+    # For merging, want all df to have the same names - add missing cols 
+    if(! is_empty(lst)){
+      lst_names <- sublist_names(lst)
+      tmp <- lapply(lst, function(i){add_missing_cols(i, lst_names)}) %>% reduce(full_join, by = lst_names)
+      
+      NAPS_fine_fb[[s]][[t]]  <- aggregate(tmp[5:ncol(tmp)], tmp[1:4], compress) #aggregate by date 
+    }
+  }
+}
+
+check_dates <- lapply(NAPS_fine_fb, lapply, function(x){if(length(x) != 0){
   dupl_dates <- nrow(x[duplicated(x$date),])
   if(dupl_dates != 0){print(sprintf("Error: %i dupl dates", dupl_dates))}}})
 
@@ -226,6 +271,8 @@ renameCols <- function(df, s) {
 
 NAPS_fine <- lapply(NAPS_fine, function(a) lapply(seq_along(a),
                                                   function(i) renameCols(a[[i]], names(a)[i])))
+NAPS_fine_fb <- lapply(NAPS_fine_fb, function(a) lapply(seq_along(a),
+                                                  function(i) renameCols(a[[i]], names(a)[i])))
 NAPS_coarse <- lapply(NAPS_coarse, function(a) lapply(seq_along(a), 
                                                       function(i) renameCols(a[[i]], names(a)[i])))
 
@@ -238,8 +285,15 @@ NAPS_coarse <- lapply(NAPS_coarse, function(x){Reduce(function(dtf1, dtf2) merge
 NAPS_fine <- lapply(NAPS_fine, function(x){Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c("date", "year", "month", "day"), 
                                                                              all.x = TRUE, all.y = TRUE), x)})
 
+NAPS_fine_fb <- lapply(NAPS_fine_fb, function(x){Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c("date", "year", "month", "day"), 
+                                                                             all.x = TRUE, all.y = TRUE), x)})
+
 
 check_dates <- lapply(NAPS_coarse, function(x){if(length(x) != 0){
+  dupl_dates <- nrow(x[duplicated(x$date),])
+  if(dupl_dates != 0){print(sprintf("Warning: %i dupl dates", dupl_dates))}}})
+
+check_dates <- lapply(NAPS_fine_fb, function(x){if(length(x) != 0){
   dupl_dates <- nrow(x[duplicated(x$date),])
   if(dupl_dates != 0){print(sprintf("Warning: %i dupl dates", dupl_dates))}}})
 
@@ -256,6 +310,7 @@ check_dates <- lapply(NAPS_fine, function(x){if(length(x) != 0){
 ##----------------------------------------------------------------------------
 ##----------------------------------------------------------------------------
 save(file = paste0(wd$output, "NAPS_fine.rda"), NAPS_fine)
+save(file = paste0(wd$output, "NAPS_fine_fb.rda"), NAPS_fine_fb)
 save(file = paste0(wd$output, "NAPS_coarse.rda"), NAPS_coarse)
 
 
