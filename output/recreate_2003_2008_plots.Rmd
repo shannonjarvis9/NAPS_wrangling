@@ -178,7 +178,7 @@ ggplot(data = fig2, mapping = aes(x = city, y = speciation_mass_ug_m3, ymin = mi
 ```
 
 # Figure 3: Monthly mean $PM_{2.5}$ mass by site 
-Trends are similar, 90% CI differs from the paper.
+Trends are similar, 90% CI differs from the paper- CI decreases with more samples
 
 ```{r, echo = FALSE, message = FALSE}
 
