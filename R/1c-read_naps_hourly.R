@@ -14,7 +14,7 @@ source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R') # setup the working 
 ## Output: a data frame with the appropriately formatted data frame column names  
 ##          for 2003-2010 NAPS xls data
 ##          read_excel() has issues reading .xls 
-getFile_csv_hourlydat <- function(file_path){
+getFile_csv <- function(file_path){
   # tmp <- read.csv(file_path, header = FALSE, na.strings = c("NA","", " ", "-", "-999","-999.000"),
   #                 fileEncoding="latin1", nrows = 20)
   # i <- getHeader(tmp)
@@ -39,8 +39,8 @@ getFile_csv_hourlydat <- function(file_path){
     filter(Pollutant %in% c("CO",   "NO" ,  "NO2",  "NOX" , "O3" ,  "PM10", "PM25", "SO2" )) %>% 
     clean_names() %>%
     mutate(date = as.Date(as.character(date),format="%Y%m%d")) %>% 
-    mutate(year = year(date), month = month(date), day = day(date)) 
-  
+    mutate(year = year(date), month = month(date), day = day(date)) %>%
+    mutate(across(starts_with("h"), as.numeric))
   
 }
 
@@ -60,6 +60,7 @@ for(i in 112:length(files)){
   print(sprintf("Read %s",files[i]))
 }
 
+#  summarise(across(h01:h24, ~mean(.x, na.rm = TRUE))) 
 
 save(file = paste0(wd$output, "naps_hourly.rda"), hourly_df)
 
