@@ -3,19 +3,20 @@ library(rlist)
 library(janitor)
 
 # 2a-convert_spec.R
-# In this script, the list of spec data is converted to the appropriate format 
-# for merging in subsequent scripts 
+# In this script, the list of spec data (2003-2010 data) is converted to the 
+# appropriate format (2010+ data format) for merging in subsequent scripts 
 
 # Manual fixes are preformed, field blanks are removed, columns are renamed using
-# cartridges and using header dictionary 
+# cartridges and the header dictionary 
 
 
 # Setup/load the necessary files 
 # ------------------------------------------------------------------------------
-
 source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R') # setup the working dir
 
 load(paste0(wd$output, "spec_read.rda"))
+
+
 
 # Load the header dictionary (sheets correspond to names of file types in the spec data)
 # The header dictionary was manually created, its format is as follows;
@@ -28,6 +29,8 @@ filename <-paste0(wd$header, "spec_header.xlsx")
 sheets <- getSheetNames(filename)
 spec_header_dict <- lapply(sheets, read.xlsx, xlsxFile = filename)
 names(spec_header_dict) <- sheets
+
+
 
 ##----------------------------------------------------------------------------
 # Need to make some manual fixes to the spec data - certain stations had 
@@ -93,7 +96,7 @@ spec <- lapply(spec, lapply, function(x){if(length(x) != 0){
 
 
 # Dealing with duplicate dates from each data frame
-# Renaming CARB using cartridge, SPEC using media
+# Renaming CARB using cartridge, SPEC using media/filter
 # ICPMS, WICPMS has fine and coarse data 
 ##----------------------------------------------------------------------------
 icpms_coarse <- vector("list", length(spec))
@@ -125,7 +128,7 @@ for(i in 1:length(spec)){
   }
   
   
-  # ICPMS has fine, coarse and T data
+  # ICPMS has fine, coarse and fine data
   if(length(spec[[i]][["ICPMS"]] ) != 0){
     icpms_coarse[[i]] <- spec[[i]][["ICPMS"]] %>% 
       filter(fraction == "C") %>% 
@@ -151,7 +154,7 @@ for(i in 1:length(spec)){
 
 
 
-# clean up the lists 
+# clean up the lists (remove empty elements)
 wicpms_coarse <- list.clean(wicpms_coarse, fun = function(x) nrow(x) == 0L || length(x) == 0L) 
 icpms_coarse <- list.clean(icpms_coarse, fun = function(x) nrow(x) == 0L || length(x) == 0L) 
 
@@ -218,9 +221,11 @@ rename_df <- function(df, header_dict, type) {
           names(df[[s]][[t]])[i] <- 
             get_names(names(df[[s]][[t]])[i], header_dict[[t]])
         }
+        # Add the sampler type to the names
         names(df[[s]][[t]])[5:ncol(df[[s]][[t]])] <- paste0(type, "_",
                                                             names(df[[s]][[t]])[5:ncol(df[[s]][[t]])])
       }
+      # Rename the file type for the list 
       type_idx <- which(names(df[[s]]) == t)
       names(df[[s]])[[type_idx]] <-
         na.omit(unique(as.character(header_dict[[t]][3, ])))

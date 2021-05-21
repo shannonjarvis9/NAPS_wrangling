@@ -5,7 +5,7 @@
 # Data is divided into coarse and fine, columns are renamed using a conversion
 # scheme s.t. it matches the post 2010 data 
 
-# Pmpart and dich is all teflon filters (info from NAPS 2003-2008 paper)
+# Pmpart and dich are all teflon filters (info from NAPS 2003-2008 paper)
 
 # Setup/load the necessary files 
 # ------------------------------------------------------------------------------
@@ -92,9 +92,9 @@ get_names <- function(col_name, next_col_name, conversion) {
 #------------------------------------------------
 ## Inputs: original_df: contains the stations /data of interest
 ##         conv_scheme: contains the conversion scheme/header info 
-# Creates a new df with the 2010+ formate - uses the stations in the 
+# Creates a new df with the 2010+ format - uses the stations in the 
 # original_df and file names in the conversion scheme 
-get_empty_list <- function(original_df, conv_scheme) {
+get_empty_list <- function(original_df, conv_scheme){
   lst <- vector("list", length(original_df))
   names(lst) <- names(original_df)
   possible_types <- na.omit(unique(as.character(conv_scheme[4, ])))
