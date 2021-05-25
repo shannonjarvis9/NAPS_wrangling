@@ -200,10 +200,10 @@ figurepm <- ggplot(data = fig2, mapping = aes(x = city, y = spec_pm2_5, ymin = m
     return(fixedLabels)
   })
 
-pdf(file = paste0(wd$figure,"pm_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"pm_by_site_2003_2008.pdf"))
 figurepm
 #save(file = paste0(wd$figure, "pm_by_site_2003_2008"), figurepm)
-dev.off()
+#dev.off()
 
 ```
 
@@ -239,10 +239,10 @@ figure_monthlypm <- ggplot( data = monthly_station_before, mapping = aes(x = mon
        x = "Month", title = " ")  +
   scale_x_discrete(labels = c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 
-pdf(file = paste0(wd$figure,"pm_by_site_month_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"pm_by_site_month_2003_2008.pdf"))
 figure_monthlypm
-save(file = paste0(wd$figure, "pm_by_site_month_2003_2008"), figure_monthlypm)
-dev.off()
+#save(file = paste0(wd$figure, "pm_by_site_month_2003_2008"), figure_monthlypm)
+#dev.off()
 ```
 
 \newpage 
@@ -287,10 +287,10 @@ fig_oc <- ggplot(oc_station, mapping = aes(x = city, y = val, fill = type)) +
     }
   )
 
-pdf(file = paste0(wd$figure,"oc_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"oc_by_site_2003_2008.pdf"))
 fig_oc
-save(file = paste0(wd$figure, "oc_by_site_2003_2008"), fig_oc)
-dev.off()
+#save(file = paste0(wd$figure, "oc_by_site_2003_2008"), fig_oc)
+#dev.off()
 ```
 
 
@@ -485,10 +485,10 @@ fig5_winter_before <- ggplot(comp_station_oct_mar_before, mapping = aes(x = city
 fig_compounds_mean <- ggarrange(fig5_summer_before, fig5_winter_before, ncol=1,nrow = 2, 
           common.legend = TRUE, legend="right")
 
-pdf(file = paste0(wd$figure,"mean_compound_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"mean_compound_by_site_2003_2008.pdf"))
 fig_compounds_mean
-save(file = paste0(wd$figure, "mean_compound_by_site_2003_2008"), fig_compounds_mean)
-dev.off()
+#save(file = paste0(wd$figure, "mean_compound_by_site_2003_2008"), fig_compounds_mean)
+#dev.off()
 ```
 
 \newpage 
@@ -592,10 +592,10 @@ fig6_winter_before <- ggplot(highest_10_oct_mar_before,
 fig_compounds_top10 <- ggarrange(fig6_summer_before, fig6_winter_before,  ncol=1, nrow = 2, 
           common.legend = TRUE, legend="right")
 
-pdf(file = paste0(wd$figure,"top10_compound_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"top10_compound_by_site_2003_2008.pdf"))
 fig_compounds_top10
-save(file = paste0(wd$figure, "top10_compound_by_site_2003_2008"), fig_compounds_top10)
-dev.off()
+#save(file = paste0(wd$figure, "top10_compound_by_site_2003_2008"), fig_compounds_top10)
+#dev.off()
 ```
 
 \newpage
@@ -663,10 +663,10 @@ fig_ammon_suplh_nit <- ggplot(data = ammon_dat_before, mapping = aes(x = month_t
        x = "Month",  title = " ")  + 
   scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 
-pdf(file = paste0(wd$figure,"ammon_sulph_nit_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"ammon_sulph_nit_by_site_2003_2008.pdf"))
 fig_ammon_suplh_nit
-save(file = paste0(wd$figure, "ammon_sulph_nit_by_site_2003_2008"), fig_ammon_suplh_nit)
-dev.off()
+#save(file = paste0(wd$figure, "ammon_sulph_nit_by_site_2003_2008"), fig_ammon_suplh_nit)
+#dev.off()
 ```
 
 
@@ -743,10 +743,10 @@ fig_ec_oc <- ggplot(data = ecoc_dat_before, mapping = aes(x = month_text, y = me
           axis.line.y.left = element_line(color = "#00BFC4"),
           axis.text.y.left = element_text(color = "#00BFC4"))
 
-pdf(file = paste0(wd$figure,"ec_oc_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"ec_oc_by_site_2003_2008.pdf"))
 fig_ec_oc
-save(file = paste0(wd$figure, "ec_oc_by_site_2003_2008"), fig_ec_oc)
-dev.off()
+#save(file = paste0(wd$figure, "ec_oc_by_site_2003_2008"), fig_ec_oc)
+#dev.off()
 ```
 
 \newpage 
@@ -810,10 +810,10 @@ fig_soil_nacl <- ggplot(data = soil_nacl_dat_before, mapping = aes(x = month_tex
        x = "Month", title = " ")  + 
   scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 
-pdf(file = paste0(wd$figure,"soil_nacl_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"soil_nacl_by_site_2003_2008.pdf"))
 fig_soil_nacl
-save(file = paste0(wd$figure, "soil_nacl_by_site_2003_2008"), fig_soil_nacl)
-dev.off()
+#save(file = paste0(wd$figure, "soil_nacl_by_site_2003_2008"), fig_soil_nacl)
+#dev.off()
 ```
 
 \newpage
@@ -850,10 +850,10 @@ fig_ammonia <- ggplot(data = ammonia_compnd_before %>% filter(city != "Abbotsfor
   labs(y = "Ammonia (ppb)", x = "Month", title = " ")  + 
   scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 
-pdf(file = paste0(wd$figure,"ammonia_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"ammonia_by_site_2003_2008.pdf"))
 fig_ammonia
-save(file = paste0(wd$figure, "ammonia_by_site_2003_2008"), fig_ammonia)
-dev.off()
+#save(file = paste0(wd$figure, "ammonia_by_site_2003_2008"), fig_ammonia)
+#dev.off()
 ```
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height= 2, fig.width = 3 , fig.cap = "Ammonia mixing ratio for Abbotsford by month (mean and inter-quartile range)"}
@@ -867,10 +867,10 @@ fig_ammonia_abbotsf <- ggplot(data = ammonia_compnd_before %>% filter(city == "A
   labs(y = "Ammonia (ppb)", x = "Month", title = " ")  + 
   scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
 
-pdf(file = paste0(wd$figure,"ammonia_abbotsf_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"ammonia_abbotsf_by_site_2003_2008.pdf"))
 fig_ammonia_abbotsf
-save(file = paste0(wd$figure, "ammonia_abbotsf_by_site_2003_2008"), fig_ammonia_abbotsf)
-dev.off()
+#save(file = paste0(wd$figure, "ammonia_abbotsf_by_site_2003_2008"), fig_ammonia_abbotsf)
+#dev.off()
 ```
 
 
@@ -935,10 +935,10 @@ fig_so2_nitric <- ggplot(data = sulphr_nitric_dat_before,
         axis.line.y.left = element_line(color = "#00BFC4"),
         axis.text.y.left = element_text(color = "#00BFC4"))
 
-pdf(file = paste0(wd$figure,"so2_nitric_by_site_2003_2008.pdf"))
+#pdf(file = paste0(wd$figure,"so2_nitric_by_site_2003_2008.pdf"))
 fig_so2_nitric
-save(file = paste0(wd$figure, "so2_nitric_by_site_2003_2008"), fig_so2_nitric)
-dev.off()
+#save(file = paste0(wd$figure, "so2_nitric_by_site_2003_2008"), fig_so2_nitric)
+#dev.off()
 
 ```
 
