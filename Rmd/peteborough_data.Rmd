@@ -1,0 +1,282 @@
+---
+title: "Petborough Naps data"
+author: "Shannon Jarvis"
+date: '2021-07-19'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stringr)
+library(dplyr)
+library(stats)
+```
+
+
+```{r}
+#Setup and load data
+source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R')
+wd$figure <- "~/NAPS_project/NAPS_wrangling/Figures/"
+# Load the data we already created
+# ------------------------------------------------------------------------------
+load(paste0(wd$output, "naps_hourly.rda"))
+load(paste0(wd$output, "NAPS_fine.rda"))
+load(paste0(wd$output, "NAPS_coarse.rda"))
+
+NAPS_raw_metadata <- read.csv(paste0(wd$data, "edited_StationsNAPS-StationsSNPA.csv")) %>%
+  rename("napsid" = "NAPS") %>% 
+  clean_names()
+
+```
+
+# Find stations that are within 150km of peterborough 
+
+```{r}
+# Calc lat/long dist from peteborough 
+get_dist <- function(lat2, lon2){
+  lat <- 44.3091 #ptbo lat lon 
+  lon <- -78.3197
+  R <- 6371e3 #metres
+  phi1 <-  lat * pi/180 #phi, lanbda in radians
+  phi2 <- lat2 * pi/180
+  delta_phi <- (lat2- lat) * pi/180 
+  delta_lanbda <- (lon2-lon) * pi/180
+  
+  a <- sin(delta_phi/2) * sin(delta_phi/2) +
+            cos(phi1) * cos(phi2) *
+            sin(delta_lanbda/2) * sin(delta_lanbda/2) 
+  c <- 2 * atan2(sqrt(a), sqrt(1-a)) 
+  
+  d <- R * c  # in metres
+  d/1000
+}
+
+relevant_stations <- NAPS_raw_metadata %>%
+  mutate(ptbo_dist = get_dist(latitude, longitude)) %>%
+  filter(ptbo_dist < 150)
+
+```
+
+
+```{r}
+# Hourly PM data 
+ptbo_hourly <- hourly_df[hourly_df$napsid %in% relevant_stations$napsid,] %>% 
+   select("pollutant","napsid","city", "date", "year", "month", "day", starts_with("h")) 
+
+#PM 2.5 data 
+ptbo_fine <- bind_rows(NAPS_fine[names(NAPS_fine)[names(NAPS_fine) %in% paste0("S",relevant_stations$napsid)]],
+                       .id = "station") 
+
+ptbo_fine <- ptbo_fine[,colSums(is.na(ptbo_fine))<nrow(ptbo_fine)] %>%
+  mutate(napsid = as.numeric(gsub("S", "", station))) %>%
+  clean_names()
+
+
+#PM 10 data 
+ptbo_coarse <- bind_rows(NAPS_coarse[names(NAPS_coarse)[names(NAPS_coarse)%in% paste0("S",relevant_stations$napsid)]],
+                         .id = "station")
+
+ptbo_coarse <- ptbo_coarse[,colSums(is.na(ptbo_coarse))<nrow(ptbo_coarse)] %>%
+    mutate(napsid = as.numeric(gsub("S", "", station))) %>%
+   clean_names()
+
+```
+
+
+```{r}
+# Lets see what data we have for which dates 
+
+ptbo_hourly %>%
+  group_by(pollutant, napsid) %>%
+  dplyr::summarise(start = min(date), end = max(date)) 
+
+ptbo_hourly %>%
+  group_by(napsid) %>%
+  dplyr::summarise(start = min(date), end = max(date)) 
+
+active_hourly <- ptbo_hourly %>% dplyr::summarise(start = min(date), end = max(date))  %>% filter(end > "2019-01-01")
+active_Relev <- relevant_stations %>% filter(napsid %in% active_hourly$napsid)
+
+active_Relev <- relevant_stations %>% filter(napsid %in% unique(ptbo_fine$napsid))
+```
+
+```{r}
+# Need to summarize the hourly data to get daily observation 
+# mean is not the best way to do this - but is placeholder for now 
+
+hourly_summary <- function(){
+  
+}
+
+ptbo_hourly <- ptbo_hourly %>% 
+  rowwise() %>% 
+  mutate(summary = mean(c_across(h01:h24), na.rm = TRUE)) 
+
+```
+
+```{r}
+# Lets transform the data frame so that there is only one row per date 
+
+# duplicate date/city/pollutant rows, need to remove 
+ptbo_hourly <- ptbo_hourly[-c(152324, 152325, 227451, 227452),]
+
+#create a unique napsid/date key
+ptbo_hourly$uniq <- paste0(ptbo_hourly$napsid, "_", ptbo_hourly$date)
+
+ptbo_hourly_data <- spread(ptbo_hourly %>% select("uniq", "pollutant", "summary"), 
+            key = pollutant, value = summary) %>% 
+  mutate(napsid = gsub("(.+?)(\\_.*)", "\\1", uniq),
+         date = as.Date(sub(".*_", "", uniq))) %>% 
+  mutate(year = year(date), month = month(date), day = day(date)) %>%
+  select(-uniq) %>%
+  relocate(c( "napsid","date", "year", "month", "day"))
+  
+# rename using hourly_mean as prefix 
+names(ptbo_hourly_data)[6:12] <- paste0("hourly_mean_", names(ptbo_hourly_data)[6:12])
+
+# add some station info 
+ptbo_hourly_data <- merge(ptbo_hourly_data, 
+                          relevant_stations %>% select(napsid, station_name, location_address, city, latitude, longitude),
+                          by = "napsid", all.x = TRUE)  %>%
+            clean_names()
+
+
+#save(file = paste0(wd$output, "ptbo_hourly_data.rda"), ptbo_hourly_data)
+```
+
+
+# We have lots of variables for PM2.5 and PM10, lets calcualte the RCM and 
+# remove variables that aren't needed 
+Commented out because I think all i really need is PM 2.5 and PM 10 
+```{r}
+
+# # Function: calc_composition_spec
+# #-----------------------------------------------------------------------------
+# # Calculates the componenets of RCM
+# # Canno calculate OM as the correction factor is location/site dependent 
+# calc_composition_spec <- function(comp_station){
+# 
+#   # Ammonium Nitrate (NH4NO3) = [ANO3] = 1.29[NO3 ] # should be teflon filter 
+#   comp_station$ANO3_dat <- 1.29*(comp_station$ions_ic_spec_tf_nitrate)
+#   
+#   # Ammonium sulphates = [ASO4] = [SO4] + [NH4] - 0.29[NO3]
+#   comp_station$ASO4_dat <- comp_station$ions_ic_spec_tf_sulphate +  
+#                            comp_station$ions_ic_spec_tf_ammonium - 
+#                            0.29*(comp_station$ions_ic_spec_tf_nitrate)
+#                            
+#   # Elemental carbon = [EC]  - combine both cartridges 
+#   comp_station <- comp_station %>% 
+#     rowwise() %>% 
+#     mutate(EC_dat = ifelse(is.na(ocec_spec_ec_a) & is.na(ocec_spec_ec_b), 
+#                            NA, sum(ocec_spec_ec_a, ocec_spec_ec_b, na.rm = TRUE) ))
+#   
+#   # Crustal matter = [SOIL] = 3.48[Si] + 1.63[Ca] + 2.42[Fe] + 1.41[K] + 1.94[Ti]
+#   SOIL_dich = 3.48*comp_station$edxrf_dich_silicon_si + 1.63*comp_station$edxrf_dich_calcium_ca + 
+#       1.63*comp_station$edxrf_dich_iron_fe + 1.41*comp_station$edxrf_dich_potassium_k +
+#       1.94*comp_station$edxrf_dich_titanium_ti
+#     
+#   SOIL_spec = 3.48*comp_station$edxrf_silicon_si + 1.63*comp_station$edxrf_calcium_ca + 
+#     1.63*comp_station$edxrf_iron_fe + 1.41*comp_station$edxrf_potassium_k +
+#     1.94*comp_station$edxrf_titanium_ti
+#   
+#   comp_station$SOIL_dat <- coalesce(SOIL_dich, SOIL_spec)
+# 
+#   # Sodium chloride = [NaCl] = [Na] + [Cl]
+#   comp_station$NaCl_dat <- comp_station$ions_ic_spec_tf_sodium + comp_station$ions_ic_spec_tf_chloride
+#   
+#   #Particle-bound water = [PBW] = 0.32 ([SO4] + [NH4 ])
+#   comp_station$PBW_dat <- 0.32*(comp_station$ions_ic_spec_tf_sulphate + comp_station$ions_ic_spec_tf_ammonium)
+# 
+#   # Organic Matter = [OM] = k[OC] 
+#   
+#   # Need to add season to comp_station for the OM correction factor 
+#   
+#   # om_correction_factor <- read_excel(paste0(wd$header, "om_correction_factor.xlsx"))%>% 
+#   #   clean_names()
+#   # comp_station$season <- ifelse(comp_station$month %in% c(3,4,5), 'spring',
+#   #                        ifelse(comp_station$month %in% c(6,7,8), 'summer',
+#   #                        ifelse(comp_station$month %in% c(9,10,11), 'fall', 
+#   #                        ifelse(comp_station$month %in% c(12,1,2), 'winter', NA))))
+#   # 
+#   # comp_station <- merge(comp_station, om_correction_factor[,c("season", "city","correction_factor")],
+#   #                       by = c("season", "city"))
+#   # 
+#   # comp_station$OM_dat <-comp_station$ocec_spec_oc_corr*(comp_station$correction_factor) #ocec_spec_oc_b
+#   
+# 
+#   comp_station$total <- comp_station$NaCl_dat + comp_station$SOIL_dat + 
+#                         comp_station$EC_dat + #comp_station$OM_dat + 
+#                         comp_station$ANO3_dat + comp_station$ASO4_dat + 
+#                         comp_station$PBW_dat
+#   comp_station %>%
+#     select(-all_of(variab_used[!variab_used %in% c("spec_pm2_5", "myso2",
+#                      "ammonia_ic_spec_ammonia", "myhno3")])) #%>%
+#     #select(-'correction_factor')
+# }
+# 
+# # Function: calc_clean_df
+# #-------------------------------------------------------------------------------
+# # Selects the variab to be used, calls the function to calculate RCM components
+# calc_clean_df <- function(df){
+#   variab_used <- c("ions_ic_spec_tf_nitrate", "ions_ic_spec_tf_sulphate", 
+#              "ions_ic_spec_tf_ammonium", "ocec_spec_oc_b", "ocec_spec_oc_corr", 
+#              "ions_ic_spec_tf_potassium",  "ocec_spec_tc_corr", "ocec_spec_ec_a",
+#              "ocec_spec_ec_b", "ions_ic_spec_tf_sodium", "ions_ic_spec_tf_chloride", 
+#              "ammonia_ic_spec_ammonia", "edxrf_silicon_si", "edxrf_calcium_ca", 
+#              "edxrf_iron_fe", "edxrf_titanium_ti", "edxrf_potassium_k", 
+#              "ocec_spec_oc_a", "nitrate_ic_spec_nitrate", "edxrf_dich_silicon_si", 
+#              "edxrf_dich_calcium_ca", "edxrf_dich_iron_fe", "edxrf_dich_potassium_k", 
+#              "edxrf_dich_titanium_ti", "ocec_spec_oc_r_a", "ocec_spec_oc_r_b", 
+#              "ammonia_ic_spec_ammonia", "spec_sulphur_dioxide", "acidic_ic_spec_sulphur_dioxide",
+#              "spec_nitric_acid", "acidic_ic_spec_nitric_acid", "spec_temp", "spec_hum", 
+#              "spec_pres", "spec_ws", "spec_wd", "spec_tdp")
+#   
+#   spec_init_data <- df %>% 
+#     select('date', 'month', "spec_pm2_5", 'station', all_of(variab_used)) %>%
+#     mutate(myso2 = coalesce(spec_sulphur_dioxide, acidic_ic_spec_sulphur_dioxide)) %>% 
+#     mutate(myhno3 = coalesce(spec_nitric_acid, acidic_ic_spec_nitric_acid))
+#   
+#   calc_composition_spec(spec_init_data)
+# 
+# }
+# 
+# 
+# ptbo_fine_summary <- calc_clean_df(ptbo_fine)
+# 
+# 
+# # commenting out coarse because it has no spec data 
+# #ptbo_coarse <- rename(ptbo_coarse,c('pm2_5_10'='spec_pm2_5')) # rename monetarily 
+# #ptbo_coarse_summary <- calc_clean_df(ptbo_coarse)
+```
+
+
+Lets marge all our data frames so that we have one observation per row for each
+date/location 
+```{r}
+
+ptbo_fine_summary <- ptbo_fine %>% 
+  mutate(napsid = as.numeric(gsub("S", "", station))) %>% 
+  select('date', 'month', day, year, "spec_pm2_5", dich_pm2_5, pm2_5) 
+  
+
+ptbo_coarse_summary <- ptbo_coarse %>%  
+  utate(napsid = as.numeric(gsub("S", "", station))) %>%
+  select('date',  'month', day, year, dich_pm2_5_10, pm2_5_10) 
+
+
+# merge all 3 data frames 
+ptbo_data <- merge(merge(ptbo_coarse_summary, ptbo_fine_summary, 
+                          by = intersect(names(ptbo_coarse_summary), names(ptbo_fine_summary)),
+                         all = TRUE),
+                  ptbo_hourly_data,  
+            by = c("date", "month", "day", "year", "napsid"),
+            all = TRUE)
+
+
+ptbo_data <- merge(ptbo_data, 
+                   relevant_stations %>% select(napsid, station_name, location_address, city, latitude, longitude),
+                   by = "napsid", all.x = TRUE)
+
+save(file = paste0(wd$output, "ptbo_data.rda"), ptbo_data)
+# copy to: /home/chris/Para_PM/dat/NAPS/
+```

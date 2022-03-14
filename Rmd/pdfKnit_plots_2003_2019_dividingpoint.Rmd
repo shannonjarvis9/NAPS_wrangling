@@ -1,0 +1,2281 @@
+---
+title: "NAPS PM 2.5 Plots 2003-2019"
+output: pdf_document
+bibliography: biblio.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("ggplot2")
+library("readxl")
+library("dplyr")
+library("lubridate")
+library("janitor")
+library("tidyr")
+library("rlang")
+library("gridExtra")
+library(ggpubr)
+library("knitr")
+library("ggforce")
+```
+
+## Introduction 
+The data used in this document was obtained for 2003-2019 from Environment Canada's 
+National Air Pollution Surveillance Program (NAPS) ([EC NAPS Data Website](https://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/?lang=en)). As of May 5, 2021, the data for 2020 has not be uploaded. 
+
+The following document reproduces the work by @DABEKZLOTORZYNSKA2011673 and 
+extends the analysis to 2019. The document begins by outlining the NAPS 
+stations and available data. Then the number of daily observations per site are used 
+to calculate a dividing date - the date that approximately divides the total 
+observations in half. Plots are constructed to present the data before and after 
+the dividing date. 
+
+```{r, echo = FALSE, message = FALSE}
+source('~/NAPS_project/NAPS_wrangling/R/0-setup_project.R')
+wd$figure <- "~/NAPS_project/NAPS_wrangling/Figures/"
+# Load the data we already created
+# ------------------------------------------------------------------------------
+load(paste0(wd$output, "NAPS_fine.rda"))
+load(paste0(wd$output, "NAPS_fine_fb.rda"))
+
+
+``` 
+
+```{r, echo = FALSE}
+# Get the station metadata
+#-------------------------------------------------------------------------------
+NAPS_raw_metadata <- read.csv(paste0(wd$data, "edited_StationsNAPS-StationsSNPA.csv")) %>%
+  mutate(station = paste0("S", NAPS)) %>%
+  clean_names  %>%
+  select(-(so2:pah)) 
+
+NAPS_staton_subset <- NAPS_raw_metadata %>% 
+    filter(naps %in% c(30113, 40801, 50104, 54401, 60211, 60427, 62601, 90132, 
+                     103202, 101004, 100119)) 
+
+# get the combined stations 
+NAPS_comb_staton_subset <- NAPS_raw_metadata %>% 
+    filter(naps %in% na.omit(NAPS_staton_subset$combined_stations)) 
+
+NAPS_metadata <- rbind(NAPS_staton_subset, NAPS_comb_staton_subset) %>%
+  mutate(city = c("Halifax", "Canterbury", "Montréal", "Saint-Anicet" , 
+                "Windsor", "Toronto", "Simcoe", "Edmonton", "Burnaby", 
+                "Abbotsford", "Golden", "Halifax", "Montréal", "Toronto","Abbotsford"))
+
+NAPS_metadata$city <- factor(NAPS_metadata$city, levels=rev(c("Halifax", "Canterbury", 
+                             "Montréal", "Saint-Anicet" , "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
+
+```
+
+## Summary of cities and change of stations
+The following table summarizes the available spectation data for the selected 
+sites. Information on the NAPS stations was found at the following link; [NAPS Station Information](https://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/ProgramInformation-InformationProgramme/?lang=en/StationsNAPS-StationsSNPA.xlsx)
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#library(kableExtra)
+df <- data.frame(Station = c(rev(c("Halifax (S30113)", "Canterbury (S40801)", 
+                             "Montréal (S50104)", "Saint-Anicet (S54401)" , 
+                             "Toronto (S60427)", "Simcoe (S62601)",
+                             "Windsor (S60211)", "Edmonton (S90132)", "Golden (S103202)", 
+                             "Abbotsford (S101004)", "Burnaby (S100119)"))),
+                 `Summary of spectation data` = c("Data for all years", "Missing in 2011","Data from 2004-2007 ","Missing from 2003-2005" ,"Missing in 2003"," Missing 2003-2004 ","Missing after 2018","Missing after 2018 ","Missing after 2008 ","Missing after 2009 ","Station opened in 2006" ), 
+                 `Change of stations` = c("No" , "Station changed from S101004 (2003 - 2010) to S101005 (2012+)" , "No information on station closing/changing" , "No", "No" , "No" , "Station changed from 60427 (2003-2014) to 60439  (2015 - 20/06/2019) to 60445  (21/06/2019 +).  Stations 60439 and 60445 were open in 2019 but are missing PM25" , "No" , "Station changed from 50104 (2003-2008) to 50134 (2008+). New station does not collect PM 2.5 spec", "Stopped site in 2014, did not combine with another station" , "Station was combined with 30118 (1990-2018) but did not measure PM 2.5 spec"))
+names(df) <- c("Station", "Summary of spectation data", 
+               "Change of Stations")
+#kable(df, align = "lll") %>%
+#  column_spec(1:3, width = c("4cm", "4cm", "7cm"))
+  #kable_styling(latex_options = c("striped"))
+  #column_spec(1:3,border_left = T, border_right = T)
+```
+
+\newpage
+
+## Timeline of stations
+The following plot shows the timelines of the available NAPS data for the three
+different sampler types (spectation, dichotomus and PM 2.5 air). 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.width=8}
+library(plotly)
+library(vistime)
+stations <- c("S30113", "S40801", "S50104", "S54401", "S60211", "S60427", 
+             "S62601", "S90132", "S103202", "S101004", "S100119", "S30118", 
+             "S50134", "S60439", "S101005", "S60445", "S30118")
+
+
+# We have an excel file that lists the stations for each year 
+all_sampler_info <- read_excel(paste0(wd$output, "all_sampler_info.xlsx")) %>%
+  filter(dir != "IntegratedPM2.5-10" & Station %in% stations) %>% 
+  filter(!(Station == "S50134" & Year == 2008)) %>% # Montreal
+  filter(!(Station == "S60439" & Year < 2014)) # Toronto 
+  #filter(!(Station == "S60445" & Year <= 2017)) %>% 
+  #filter(!(Station == "S30118" & Year => 2006)) 
+
+all_sampler_info$startYear <- as.Date(ISOdate(all_sampler_info$Year, 1, 1))
+all_sampler_info$endYear <- as.Date(ISOdate(all_sampler_info$Year, 12, 31))
+names(all_sampler_info)[2] <- "station" 
+
+all_sampler_info <- merge(all_sampler_info, NAPS_metadata[,c("station", "city")], 
+                          by = "station")
+
+# edit centerbury 
+all_sampler_info <- rbind(all_sampler_info %>% filter(!(city == "Canterbury" & type == "PM")), 
+                          filter(all_sampler_info, city == "Canterbury" & type == "PM") %>%
+                            mutate(Sampler = "PM2.5 Manual Air Sampler (2000 Partisol Thermo)"))
+
+timeline <- all_sampler_info %>%
+  select(city, type, startYear, endYear, Sampler) %>%
+  group_by(city, type, Sampler) %>%
+  dplyr::summarise(start = min(startYear), end = max(endYear)) %>%
+  mutate(colour = ifelse(type == "Spec", '#F8766D', ifelse(type == "Dichot", '#B79F00','#00BA38')))
+
+# Spec figure 
+vis1 <- rbind(timeline %>% filter(type == "Spec"), timeline %>% filter(type == "PM"))
+
+figSpec <- gg_vistime(vis1, col.group = "city", 
+                   col.event = "type", show_labels = FALSE, col.color = "colour", 
+                    col.tooltip = "Sampler", optimize_y = TRUE,
+                   title = "Spectation Sampler (Pink) and \n Manual Air Sampler (Green)") 
+
+
+#Dichot figure 
+
+#need to add misisng cities
+dich <- timeline %>% filter(type == "Dichot")
+dich[nrow(dich)+1,"city"] <- "Canterbury"
+dich$city <- factor(dich$city, levels=rev(c("Halifax", "Canterbury", 
+                             "Montréal", "Saint-Anicet" , "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
+
+figDichot <- gg_vistime(dich , col.group = "city", 
+                     col.event = "type", show_labels = FALSE, col.color = "colour", 
+                     col.tooltip = "Sampler", optimize_y = TRUE, 
+                     title = "Dichotomus Sampler") 
+
+grid.arrange(figSpec, figDichot, ncol=2) 
+
+```
+
+                             
+
+```{r, echo = FALSE, message = FALSE}
+pm25_bind <- bind_rows(NAPS_fine, .id = "station") %>%
+  clean_names()
+
+fb_bind <- bind_rows(NAPS_fine_fb, .id = "station") %>%
+  clean_names()
+
+# rename field blank values with fb
+names(fb_bind)[which(!names(fb_bind) %in% c("date", "day", "month", "year","station"))] <- 
+  paste0("fb_" ,names(fb_bind)[which(!names(fb_bind) %in% c("date", "day", "month", "year", "station"))])
+
+
+pm25_fb_bind <- merge(pm25_bind, fb_bind[,c("date", "fb_ocec_spec_oc_r", "fb_ocec_spec_poc_b",
+                                            "fb_ocec_spec_oc_b", "fb_ocec_spec_oc_b_mdl", "station")], 
+                      by = c("date", "station"), all.x = TRUE, all.y = TRUE) 
+
+
+spec_init_data <- merge(pm25_fb_bind, NAPS_metadata, by = "station") %>% 
+    filter( city %in% c("Halifax", "Canterbury", 
+                             "Montréal", "Saint-Anicet" , "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")) 
+
+
+
+# Need to deal with stations changing to remove years where data from both stations
+# are used 
+# Montreal station 50104 (July 1 2010-2019) -> 50134 (2008-2019)
+# Toronto station 60427 (2003-2014) -> 60439 (2013-2017)
+spec_init_data <- spec_init_data %>%
+  filter(!(station == "S50134" & year == 2008)) %>% # Montreal - doesn't chnge anything for spec sampler
+  filter(!(station == "S60439" & date <= "2014-05-26")) # Toronto
+
+
+spec_init_data$month[which(is.na(spec_init_data$month))] <- month(spec_init_data$date[which(is.na(spec_init_data$month))])
+spec_init_data$day[which(is.na(spec_init_data$day))] <- month(spec_init_data$date[which(is.na(spec_init_data$day))])
+spec_init_data$year[which(is.na(spec_init_data$year))] <- month(spec_init_data$date[which(is.na(spec_init_data$year))])
+
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+## # Need to replace all values below the mdl with 1/2*mdl  (section 2.3 in paper)
+## 
+
+# Vector of variables that are used in this analysis document 
+variab_used <- c("ions_ic_spec_tf_nitrate", "ions_ic_spec_tf_sulphate", 
+           "ions_ic_spec_tf_ammonium", "ocec_spec_oc_b", "ocec_spec_oc_corr", 
+           "ions_ic_spec_tf_potassium",  "ocec_spec_tc_corr", "ocec_spec_ec_a",
+           "ocec_spec_ec_b", "ions_ic_spec_tf_sodium", "ions_ic_spec_tf_chloride", 
+           "ammonia_ic_spec_ammonia", "edxrf_spec_silicon_si", "edxrf_spec_calcium_ca", 
+           "edxrf_spec_iron_fe", "edxrf_spec_titanium_ti", "edxrf_spec_potassium_k", 
+           "ocec_spec_oc_a", "nitrate_ic_spec_nitrate", "edxrf_dich_silicon_si", 
+           "edxrf_dich_calcium_ca", "edxrf_dich_iron_fe", "edxrf_dich_potassium_k", 
+           "edxrf_dich_titanium_ti", "ocec_spec_oc_r_a", "ocec_spec_oc_r_b",  
+           "fb_ocec_spec_poc_b", "fb_ocec_spec_oc_r",  "fb_ocec_spec_oc_b",
+           "ammonia_ic_spec_ammonia", "spec_sulphur_dioxide", "acidic_ic_spec_sulphur_dioxide",
+           "spec_nitric_acid", "acidic_ic_spec_nitric_acid", "spec_temp", "spec_hum", 
+           "spec_pres", "spec_ws", "spec_wd", "spec_tdp")
+
+# Function: mutate_using_mdl
+##---------------------------------------------------
+## Mutates the col using the mdl column: replaces all 
+## col values below the mdl with 1/2*mdl
+mutate_using_mdl <- function(df, col, colmdl){
+  col <- as.character(col)
+  colmdl <- as.character(colmdl)
+  df %>% mutate(!!rlang::ensym(col) := ifelse(!is.na(!!rlang::ensym(col)) & (!!rlang::ensym(col)  < !!rlang::ensym(colmdl)) ,
+                                                    0.5*!!rlang::ensym(colmdl), !!rlang::ensym(col) ))
+}
+
+
+## # For each column, find the mdl  
+## # there are cols that are missing - mdl was removed earlier as it is all blank
+## ##-----------------------------------------------------------------------------
+df_mdl_names <- grep("mdl", names(spec_init_data), invert = FALSE, value = TRUE) 
+
+for(i in 1:length(variab_used)){
+  
+  idx <- df_mdl_names[which(paste0(variab_used[i], "_mdl") == df_mdl_names)]
+  
+  split_name <- strsplit(variab_used[i], "_")[[1]]
+  idx_other <- grep(paste0(split_name[1], "_", split_name[2], "_", split_name[4]), df_mdl_names, value = TRUE)
+  idx_other2 <- grep(paste0(split_name[2], "_", split_name[3]), df_mdl_names, value = TRUE)
+  
+  mdl_col <- ifelse(length(idx) == 1L, idx, 
+                    ifelse(length(idx_other) == 1L, idx_other,
+                    ifelse(length(idx_other2) == 1L, idx_other2, NA)))
+
+  if(is.na(mdl_col)){
+    print(sprintf("Unable to find mdl col, %s, %i", variab_used[i], i))
+  } else {
+    spec_init_data <- mutate_using_mdl(spec_init_data, variab_used[i], mdl_col)
+  }
+}
+
+
+# Remove un-used variables 
+spec_init_data <- spec_init_data %>% 
+  select('city','date', 'month', "spec_pm2_5", 'station', all_of(variab_used)) %>%
+  mutate(myso2 = coalesce(spec_sulphur_dioxide, acidic_ic_spec_sulphur_dioxide)) %>% 
+  mutate(myhno3 = coalesce(spec_nitric_acid, acidic_ic_spec_nitric_acid))
+
+
+oc_dat <- spec_init_data %>% 
+  select('city','date', 'month','station', all_of(c("ocec_spec_oc_b",  
+           "ocec_spec_oc_a", "ocec_spec_oc_r_a", "ocec_spec_oc_r_b",  
+           "fb_ocec_spec_poc_b", "fb_ocec_spec_oc_r",  "fb_ocec_spec_oc_b"))) 
+
+# only have pressure and temp data after ~2010
+weather_dat <- spec_init_data %>%
+  select("city", "date", "spec_temp", "spec_hum", "spec_pres",
+         "spec_ws", "spec_wd", "spec_tdp")
+
+```
+
+```{r}
+calc_composition_spec <- function(comp_station){
+
+  # Ammonium Nitrate (NH4NO3) = [ANO3] = 1.29[NO3 ] # should be teflon filter 
+  comp_station$ANO3_dat <- 1.29*(comp_station$ions_ic_spec_tf_nitrate)
+  
+  # Ammonium sulphates = [ASO4] = [SO4] + [NH4] - 0.29[NO3]
+  comp_station$ASO4_dat <- comp_station$ions_ic_spec_tf_sulphate +  
+                           comp_station$ions_ic_spec_tf_ammonium - 
+                           0.29*(comp_station$ions_ic_spec_tf_nitrate)
+                           
+  # Elemental carbon = [EC]  - combine both cartridges 
+  comp_station <- comp_station %>% 
+    rowwise() %>% 
+    mutate(EC_dat = ifelse(is.na(ocec_spec_ec_a) & is.na(ocec_spec_ec_b), 
+                           NA, sum(ocec_spec_ec_a, ocec_spec_ec_b, na.rm = TRUE) ))
+  
+  # Crustal matter = [SOIL] = 3.48[Si] + 1.63[Ca] + 2.42[Fe] + 1.41[K] + 1.94[Ti]
+  SOIL_dich = 3.48*comp_station$edxrf_dich_silicon_si + 1.63*comp_station$edxrf_dich_calcium_ca + 
+      1.63*comp_station$edxrf_dich_iron_fe + 1.41*comp_station$edxrf_dich_potassium_k +
+      1.94*comp_station$edxrf_dich_titanium_ti
+    
+  SOIL_spec = 3.48*comp_station$edxrf_spec_silicon_si + 1.63*comp_station$edxrf_spec_calcium_ca + 
+    1.63*comp_station$edxrf_spec_iron_fe + 1.41*comp_station$edxrf_spec_potassium_k +
+    1.94*comp_station$edxrf_spec_titanium_ti
+  
+  comp_station$SOIL_dat <- coalesce(SOIL_dich, SOIL_spec)
+
+  # Sodium chloride = [NaCl] = [Na] + [Cl]
+  comp_station$NaCl_dat <- comp_station$ions_ic_spec_tf_sodium + comp_station$ions_ic_spec_tf_chloride
+  
+  #Particle-bound water = [PBW] = 0.32 ([SO4] + [NH4 ])
+  comp_station$PBW_dat <- 0.32*(comp_station$ions_ic_spec_tf_sulphate + comp_station$ions_ic_spec_tf_ammonium)
+
+ # comp_station$PBW_h <- coalesce((comp_station$ions_ic_spec_tf_sulphate + comp_station$ions_ic_spec_tf_ammonium),
+ #                                 (comp_station$ions_ic_tf_sulphate + comp_station$ions_ic_tf_ammonium))
+ # # http://www.aim.env.uea.ac.uk/aim/ - all temps are between 200 and 330 
+ # comp_station$PBW_molar_conc_H <- 1.0080*1e9*coalesce((comp_station$ions_ic_spec_tf_ammonium*1e-6*18.039)/1e3 / 
+ #                                           ((comp_station$ions_ic_spec_tf_sulphate*1e-6*96.0637)/1e3 +
+ #                                           (comp_station$ions_ic_spec_tf_nitrate*1e-6*62.0049)/1e3),
+ #                                           (comp_station$ions_ic_tf_ammonium*1e-6*18.039)/1e3 / 
+ #                                           ((comp_station$ions_ic_tf_sulphate*1e-6*96.0637)/1e3 +
+ #                                           (comp_station$ions_ic_tf_nitrate*1e-6*62.0049)/1e3))
+  comp_station$PBW_h <- (comp_station$ions_ic_spec_tf_sulphate + comp_station$ions_ic_spec_tf_ammonium)
+  # http://www.aim.env.uea.ac.uk/aim/ - all temps are between 200 and 330 
+  comp_station$PBW_molar_conc_H <- (comp_station$ions_ic_spec_tf_ammonium -  
+                                            comp_station$ions_ic_spec_tf_sulphate -
+                                            comp_station$ions_ic_spec_tf_nitrate)
+  
+  # Organic Matter = [OM] = k[OC] 
+  
+  # Need to add season to comp_station for the OM correction factor 
+  om_correction_factor <- read_excel(paste0(wd$header, "om_correction_factor.xlsx"))%>% 
+    clean_names()
+  comp_station$season <- ifelse(comp_station$month %in% c(3,4,5), 'spring',
+                         ifelse(comp_station$month %in% c(6,7,8), 'summer',
+                         ifelse(comp_station$month %in% c(9,10,11), 'fall', 
+                         ifelse(comp_station$month %in% c(12,1,2), 'winter', NA))))
+  
+  comp_station <- merge(comp_station, om_correction_factor[,c("season", "city","correction_factor")],
+                        by = c("season", "city"))
+  
+  comp_station$OM_dat <-comp_station$ocec_spec_oc_corr*(comp_station$correction_factor) #ocec_spec_oc_b
+  
+
+  comp_station$total <- comp_station$NaCl_dat + comp_station$SOIL_dat + 
+                        comp_station$EC_dat + comp_station$OM_dat + 
+                        comp_station$ANO3_dat + comp_station$ASO4_dat + 
+                        comp_station$PBW_dat
+  comp_station %>%
+    select(-all_of(variab_used[!variab_used %in% c("spec_pm2_5", "myso2",
+                     "ammonia_ic_spec_ammonia", "myhno3")])) %>%
+    select(-'correction_factor')
+}
+     
+
+spec_data <- calc_composition_spec(spec_init_data)
+
+# remove rows that are all na 
+spec_data <- spec_data[!rowSums(is.na(spec_data[,5:ncol(spec_data)])) == ncol(spec_data) - 4, ] 
+
+spec_data$na_count <- apply(spec_data, 1, function(x) sum(is.na(x)))
+
+
+spec_data_bad_val <- spec_data %>%
+  mutate(year = year(date), day = day(date)) %>% 
+  filter(city == "Edmonton" & year == 2018 & month == 03) %>% # date == "2018-03-12")
+  select(date, day, ANO3_dat)
+
+fig <- ggplot(data = spec_data_bad_val, mapping = aes(x = day, y = ANO3_dat)) + 
+  geom_point() +
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=14),
+        title=element_text(size=16)) +
+  labs(y =   expression(Ammonium ~ Nitrate ~ Concentration ~ (mu ~ g/m^3)), 
+       x = "Day of Month",
+       title = "Ammonium Nitrate Concentration in Edmonton",
+       subtitle = "March 2018") 
+
+  png(file = paste0(wd$figure, "bad_val.png"), width = 700, 
+      height = 700, units = "px")
+  fig
+  save(file = paste0(wd$figure, "bad_val.png"), fig)
+  dev.off()
+  
+  
+# Need to remove Edmonton observation 2018/03/12 -> something weird with nitrate value 
+spec_data <- spec_data %>%
+  filter(!(city == "Edmonton" & date == "2018-03-12"))
+
+dat <- data.frame(total = spec_data$total, spec_pm2_5 = spec_data$spec_pm2_5)
+dat$div <- dat$total/dat$spec_pm2_5
+dat$diff <- dat$spec_pm2_5 - dat$total
+mean(dat$diff, na.rm = TRUE)
+```
+
+
+
+## Finding the cutoff date
+```{r, echo = FALSE, message = FALSE}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Find the cutoff date
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+getTable <- function(dividing_Date){
+    
+  # Total observation of dates before dividing_Date
+  tbl_before <- spec_data %>%
+    filter(date <= dividing_Date) %>%
+    filter(na_count < 3) %>% 
+    select("city","date", "spec_pm2_5")%>%
+    group_by(city) %>%
+    dplyr::summarise(before_samp = n())
+  
+  # Total observation of dates after dividing_Date
+  tbl_after <- spec_data %>%
+    filter(date > dividing_Date) %>%
+    filter(na_count < 3) %>% 
+    select("city","date", "spec_pm2_5")%>%
+    group_by(city) %>%
+    dplyr::summarise(after_samp = n())
+  
+  # Calculate percentage of dates before/after the cutoff
+  tbl_op <- merge(tbl_before, tbl_after, by = "city", all = TRUE) %>% 
+    merge(min_max_date, by = "city", all = TRUE) %>% 
+    mutate(perc_aft = after_samp/total_samp, perc_before = before_samp/total_samp) %>%
+    mutate_if(is.numeric, ~replace(., is.na(.), 0))
+}
+
+# initialize values used in loop 
+min_diff <- 100 
+
+# total observations of all dates 
+min_max_date <- spec_data %>%
+  group_by(city) %>%
+  filter(na_count < 3) %>% 
+  dplyr::summarise(min = min(date), max = max(date), total_samp = n()) 
+  
+
+for(dividing_Date in seq(as.Date("2007-01-01"), as.Date("2016-01-01"), by = "6 months")){
+  
+  tbl_op <- getTable(dividing_Date)
+  
+  # Find the average percentile 
+  before <- mean(tbl_op$perc_before, na.rm = TRUE)
+  after <- mean(tbl_op$perc_aft, na.rm = TRUE)
+  
+  # Score the average to find the best one 
+  curr_diff <- abs(0.5 - before) + abs(0.5-after)
+  if(curr_diff < min_diff){
+    min_diff <- curr_diff
+    cutoff_date <- dividing_Date
+    }
+}
+
+cutoff_date <- as.Date(as.integer(cutoff_date), origin = "1970-01-01")
+
+```
+
+Using six month increments, the dividing date was determined as; `r cutoff_date`.
+The following table presents the number of samples before and after the calculated 
+date. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+tbl <- getTable(cutoff_date) %>% 
+  mutate_at(vars(starts_with("perc")), funs(round(., 2)))
+
+names(tbl) <- c("City", "Number samples before cutoff", 
+                "Number samples after cutoff","min","max", 
+                "total number of samples", "Percent after cutoff", 
+                "Percent before cutoff")
+
+
+#kable(tbl[,c(1,2,3,8,7)]) %>%
+#  column_spec(1:5, width = "3cm")
+
+spec_before_cutoff<- spec_data %>%
+  filter(na_count < 3) %>%
+  filter( date < cutoff_date) 
+
+spec_after_cutoff <- spec_data %>%
+  filter(na_count < 3) %>%
+  filter( date >= cutoff_date) 
+
+
+spec_after_cutoff <- merge(spec_after_cutoff, weather_dat, by = c("city", "date"))
+
+```
+The average of the percent before cutoff column is `r round(mean(tbl[,8]),2)` and the 
+percent after cutoff column is `r round(mean(tbl[,7], na.rm = TRUE),2)`.
+
+\newpage
+
+## Total $PM_{2.5}$ mass by site 
+
+```{r}
+# code copied from: https://stackoverflow.com/questions/4765482/changing-whisker-definition-in-geom-boxplot
+stat_boxplot_custom <- function(mapping = NULL, data = NULL,
+                     geom = "boxplot", position = "dodge",
+                     ...,
+                     qs = c(.02, .25, 0.5, 0.75, 0.98),
+                     na.rm = FALSE,
+                     show.legend = NA,
+                     inherit.aes = TRUE) {
+  layer(
+      data = data,
+      mapping = mapping,
+      stat = StatBoxplotCustom,
+      geom = geom,
+      position = position,
+      show.legend = show.legend,
+      inherit.aes = inherit.aes,
+      params = list(
+      na.rm = na.rm,
+      qs = qs,
+      ...
+      )
+  )
+}
+
+ StatBoxplotCustom <- ggproto("StatBoxplotCustom", Stat,
+   required_aes = c("x", "y"),
+   non_missing_aes = "weight",
+ 
+   setup_params = function(data, params) {
+     params$width <- ggplot2:::"%||%"(
+       params$width, (resolution(data$x) * 0.75)
+     )
+ 
+     if (is.double(data$x) && !ggplot2:::has_groups(data) && any(data$x != data$x[1L])) {
+       warning(
+         "Continuous x aesthetic -- did you forget aes(group=...)?",
+         call. = FALSE
+       )
+     }
+ 
+     params
+   },
+ 
+   compute_group = function(data, scales, width = NULL, na.rm = FALSE, qs = c(.02, .25, 0.5, 0.75, 0.98)) {
+ 
+     if (!is.null(data$weight)) {
+       mod <- quantreg::rq(y ~ 1, weights = weight, data = data, tau = qs)
+       stats <- as.numeric(stats::coef(mod))
+     } else {
+     stats <- as.numeric(stats::quantile(data$y, qs))
+     }
+     names(stats) <- c("ymin", "lower", "middle", "upper", "ymax")
+     iqr <- diff(stats[c(2, 4)])
+ 
+     outliers <- (data$y < stats[1]) | (data$y > stats[5])
+ 
+     if (length(unique(data$x)) > 1)
+     width <- diff(range(data$x)) * 0.9
+ 
+     df <- as.data.frame(as.list(stats))
+     df$outliers <- list(data$y[outliers])
+ 
+     if (is.null(data$weight)) {
+       n <- sum(!is.na(data$y))
+     } else {
+       # Sum up weights for non-NA positions of y and weight
+       n <- sum(data$weight[!is.na(data$y) & !is.na(data$weight)])
+     }
+ 
+     df$notchupper <- df$middle + 1.58 * iqr / sqrt(n)
+     df$notchlower <- df$middle - 1.58 * iqr / sqrt(n)
+ 
+     df$x <- if (is.factor(data$x)) data$x[1] else mean(range(data$x))
+     df$width <- width
+     df$relvarwidth <- sqrt(n)
+     df
+   }
+ )
+
+
+ ## Function to save the plots 
+save_plots <- function(plot_before, plot_after, base_name){
+  img <- arrangeGrob(plot_before, plot_after, ncol=2) 
+  ggsave(file=paste0(wd$figure,base_name, ".png"), img,  width = 14, 
+     height = 14, units = "in")
+   
+  # save the before plot 
+  png(file = paste0(wd$figure, paste0(base_name, "_2003_2008.png")), width = 700, 
+      height = 700, units = "px")
+  plot_before
+  save(file = paste0(wd$figure, paste0(base_name, "_2003_2008.png")), plot_before)
+  dev.off()
+  
+  # save the after plot 
+  png(file = paste0(wd$figure,paste0(base_name, "_2009_2019.png")), width = 700, 
+      height = 700, units = "px")
+  plot_after
+  save(file = paste0(wd$figure, paste0(base_name, "_2009_2019.png")), plot_after)
+  dev.off()
+}
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Total $PM_{2.5}$ mass (Median, 25th and 75th percentile, 2nd and 98th percentile)"}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 2 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+max <- ceiling(max(c(spec_after_cutoff$spec_pm2_5, spec_before_cutoff$spec_pm2_5), 
+           na.rm = TRUE)) + 3
+
+fig2 <- spec_before_cutoff %>%
+  select(city, spec_pm2_5) %>%
+  filter(!is.na(spec_pm2_5)) %>%
+  mutate(min = quantile(spec_pm2_5, 0.02, na.rm = TRUE),
+        max = quantile(spec_pm2_5, 0.98, na.rm = TRUE))
+
+
+plot_before <- ggplot(data = fig2, mapping = aes(x = city, y = spec_pm2_5, ymin = min,
+       ymax = max)) + 
+  stat_boxplot_custom(outlier.shape = 1) +
+  ylim(0, max) + 
+  labs(y =   expression(PM[2.5] ~ Mass ~ (mu ~ g/m^3)), x = " ",
+       title = "2003 - 2009")  + 
+  theme(axis.text=element_text(size=12)) +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+fig2_aft_truncated_edmon <- spec_after_cutoff %>%
+  select(city, spec_pm2_5) %>%
+  filter(!is.na(spec_pm2_5)) %>%
+  filter(spec_pm2_5 >= 0) %>%
+  mutate(min = quantile(spec_pm2_5, 0.02, na.rm = TRUE),
+        max = quantile(spec_pm2_5, 0.98, na.rm = TRUE)) %>%
+  mutate(edmon = ifelse(city == "Edmonton", "yes", "no"))
+
+fig2_aft_edmon <- fig2_aft_truncated_edmon %>% 
+  filter(city == "Edmonton") %>% 
+  filter(spec_pm2_5 < 50) %>%
+  mutate(edmon = "no")
+
+fig2_aft <- rbind(fig2_aft_truncated_edmon, fig2_aft_edmon)
+
+plot_after_noedmontonmax <- ggplot(data = fig2_aft, mapping = aes(x = city, y = spec_pm2_5, ymin = min,
+       ymax = max)) + 
+  stat_boxplot_custom(outlier.shape = 1) + 
+  #ylim(0, max) + 
+  #scale_y_continuous(limits = c(0, 50), breaks = seq(0,50,10)) +
+  labs(y =    expression(PM[2.5] ~ Mass ~ (mu ~ g/m^3)), x = " ") + #, title = "2010-2019")  + 
+  theme(axis.text=element_text(size=15), axis.title = element_text(size=15)) +
+  #facet_wrap(.~edmon,scales="free") +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+plot_after <- plot_after_noedmontonmax + 
+  ggforce::facet_row(vars(edmon), scales = 'free', space = 'free') +
+  theme(strip.background = element_blank(), strip.text.x = element_blank())
+
+
+
+
+#save_plots(plot_before, plot_after, "pm_by_site_boxplot")
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"pm_by_site_boxplot_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+plot_before
+save(file = paste0(wd$figure, "pm_by_site_boxplot_2003_2009.png"), plot_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"pm_by_site_boxplot_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+plot_after
+save(file = paste0(wd$figure, "pm_by_site_boxplot_2010_2019.png"), plot_after)
+dev.off()
+
+```
+
+
+
+
+
+\newpage
+
+# Monthly mean $PM_{2.5}$ mass by site 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 6.5, fig.cap = "Monthly mean $PM_{2.5}$ (Mean and 90th percent CI)"}
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 3 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+monthly_station_before <- spec_data %>%
+  filter( date < cutoff_date) %>% 
+  mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+  dplyr::select("city", "spec_pm2_5","month_text")%>%
+  filter(!is.na(spec_pm2_5)) %>% 
+  group_by(city, month_text) %>%
+  dplyr::summarise(mean = mean(spec_pm2_5, na.rm = TRUE), 
+                   n = n(),
+                   sd = sd(spec_pm2_5, na.rm = TRUE)) %>%
+  mutate(CI = qt(0.95, df = n-1)*(sd/sqrt(n)))
+
+max_bf <- ceiling(max(c(monthly_station_before$mean + monthly_station_before$CI), 
+           na.rm = TRUE)) + 1
+
+monthly_station <- spec_data %>%
+  filter( date >= cutoff_date) %>%
+  mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+  dplyr::select("city", "spec_pm2_5", "month", "month_text")%>%
+  filter(!is.na(spec_pm2_5)) %>% 
+  group_by(city, month, month_text) %>%
+  dplyr::summarise(mean = mean(spec_pm2_5, na.rm = TRUE), 
+                   n = n(),
+                   sd = sd(spec_pm2_5, na.rm = TRUE)) %>%
+  mutate(CI = qt(0.95, df = n-1)*(sd/sqrt(n)))
+
+
+max <- ceiling(max(c(monthly_station$mean + monthly_station$CI), 
+           na.rm = TRUE)) + 1
+
+
+fig3_before <- ggplot( data = monthly_station_before, mapping = aes(x = month_text, y = mean, group = 1,
+    ymin = mean - CI, ymax = mean + CI)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap( ~ city, nrow = 3) +
+  ylim(0, max_bf) +
+  labs(y =   expression(paste("Total Mass From Spectation Sampler (", mu, "g/", m ^ 3, ")")), 
+       x = "Month", title = "2003 - 2009")  +
+  scale_x_discrete(labels = c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+
+fig3_after <- ggplot( data = monthly_station, mapping = aes(x = month_text, y = mean, group = 1,
+    ymin = mean - CI, ymax = mean + CI)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap( ~ city, nrow = 3) +
+  ylim(0, max) +
+  labs(y =   expression(paste("Total Mass From Spectation Sampler (", mu, "g/", m ^ 3, ")")), 
+       x = "Month", title = "")  +
+  scale_x_discrete(labels = c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+grid.arrange(fig3_before, fig3_after, ncol=1)
+
+#save_plots(fig3_before, fig3_after, "pm_by_site_month")
+
+# save the before plot 
+png(file = paste0(wd$figure,"pm_by_site_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig3_before
+save(file = paste0(wd$figure, "pm_by_site_month_2003_2009.png"), fig3_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"pm_by_site_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig3_after
+save(file = paste0(wd$figure, "pm_by_site_month_2010_2019.png"), fig3_after)
+dev.off()
+
+
+# looking at the jan data 
+monthly_station_jan_after <- spec_data %>%
+  filter( date >= cutoff_date) %>%
+  filter( month == 1) %>%
+  mutate(day = day(date)) %>%
+  dplyr::select("city", "spec_pm2_5", "month", "day")%>%
+  filter(!is.na(spec_pm2_5)) %>% 
+  group_by(city, day) %>%
+  dplyr::summarise(mean = mean(spec_pm2_5, na.rm = TRUE), 
+                   n = n(),
+                   sd = sd(spec_pm2_5, na.rm = TRUE)) %>%
+  mutate(CI = qt(0.95, df = n-1)*(sd/sqrt(n)))
+
+ jan_with_error <- ggplot( data = monthly_station_jan_after, mapping = aes(x = day, y = mean, group = 1,
+    ymin = mean - CI, ymax = mean + CI)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap( ~ city, nrow = 3) +
+  labs(y =   expression(paste("Total Mass From Spectation Sampler (", mu, "g/", m ^ 3, ")")), 
+       x = "Day", title = "")  
+
+monthly_station_jan_after_obsv <- spec_data %>%
+  filter( date >= cutoff_date) %>%
+  filter( month == 1) %>%
+  mutate(day = day(date)) %>%
+  dplyr::select("city", "spec_pm2_5", "month", "day")%>%
+  filter(!is.na(spec_pm2_5))    %>%
+  group_by(city) %>%
+    mutate(label = ifelse(spec_pm2_5 > mean(spec_pm2_5) + 3 * sd(spec_pm2_5) |
+                     spec_pm2_5 < mean(spec_pm2_5) - 3 * sd(spec_pm2_5), "Outlier", "Normal"))
+
+line_outlier_plot <- function(df, outlier_color = "red", normal_color = "black", drop = FALSE){
+  # Assign a label to show if it is an outlier or not
+  df <- df %>%
+    group_by(city) %>%
+    mutate(label = ifelse(spec_pm2_5 > mean(spec_pm2_5) + 3 * sd(spec_pm2_5) |
+                     spec_pm2_5 < mean(spec_pm2_5) - 3 * sd(spec_pm2_5), "Outlier", "Normal"))
+
+  df$label <- factor(df$label, levels = c("Normal", "Outlier"))
+
+  # Set the color palette
+  pal <- c("Outlier" = outlier_color, "Normal" = normal_color)
+
+  p <- ggplot(df, aes(x = day, y = spec_pm2_5)) +
+    geom_point(aes(color = label)) +
+    facet_wrap( ~ city, nrow = 3) +
+    scale_color_manual(values = pal, drop = drop) +
+    theme(legend.title = element_blank()) +
+  labs(y =   expression(paste("Total Mass From Spectation Sampler (", mu, "g/", m ^ 3, ")")), 
+       x = "Day", title = "") +  
+  scale_x_continuous(limits = c(1, 31), breaks = seq(1,31,3))
+
+  return(p)
+}
+
+jan_outliers <- line_outlier_plot(monthly_station_jan_after_obsv)
+
+
+png(file = paste0(wd$figure,"pm_by_site_jan_outliers_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+jan_outliers
+save(file = paste0(wd$figure, "pm_by_site_jan_outliers_2010_2019.png"), jan_outliers)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"pm_by_site_jan_mean_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+jan_with_error
+save(file = paste0(wd$figure, "pm_by_site_jan_mean_2010_2019.png"), jan_with_error)
+dev.off()
+
+```
+
+
+```{r}
+ 
+# calculating mean difference
+dat2 <- merge(monthly_station_before[,c("city", "month_text", "mean")], monthly_station[,c("city", "month_text", "mean")], by = c("city", "month_text"))
+dat2$diff <- dat2$mean.x - dat2$mean.y
+mean(dat2$diff, na.rm = TRUE)
+
+dat2 %>%
+  group_by(city) %>%
+  summarise(mean(diff))
+```
+
+\newpage 
+
+# Mean organic carbon (OC) by site 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Mean Organic Carbon by cartridge and site"}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 4
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
+oc_station <- oc_dat %>%
+  filter( date < cutoff_date) %>% 
+  mutate(mean_oc_cart_a = ocec_spec_oc_r_a) %>%  
+  mutate(mean_oc_cart_b = ocec_spec_oc_r_b) %>%  
+  mutate(passiveTravel_fieldBlank = fb_ocec_spec_poc_b + fb_ocec_spec_oc_r) %>% # ocec_spec_oc_r + 
+  dplyr::select("city", date,
+                "mean_oc_cart_a",
+                "mean_oc_cart_b",
+                "passiveTravel_fieldBlank") %>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)  %>%
+  pivot_longer(!city, names_to = "type", values_to = "val")
+
+fig4_before <- ggplot(oc_station, mapping = aes(x = city, y = val, fill = type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+   scale_fill_discrete(labels = c("Mean OC (QA)", "Mean OC Active Blank (QB)",
+    "Passive Travel and Field Blank")) +
+  scale_y_continuous(limits = c(0, 8), breaks = 0:8) +
+  theme(legend.title = element_blank(),
+        axis.text=element_text(size=15), axis.title = element_text(size=15))
+  labs(y =   expression(Total ~ OC ~ Concentration ~ (mu ~ g / m ^ 3)), x = "",
+       title = "2003 - 2009")  +
+  scale_x_discrete(
+    labels = function(labels) {
+      fixedLabels <- c()
+      for (l in 1:length(labels)) {
+        fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+      }
+      return(fixedLabels)
+    }
+  )
+
+oc_station_aft <- oc_dat %>%
+  filter( date >= cutoff_date) %>% 
+  mutate(mean_oc_cart_a = ocec_spec_oc_a) %>%
+  mutate(mean_oc_cart_b = ocec_spec_oc_b) %>%
+  mutate(passiveTravel_fieldBlank = fb_ocec_spec_oc_b + fb_ocec_spec_poc_b) %>%
+  dplyr::select("city", "mean_oc_cart_a", "mean_oc_cart_b", "passiveTravel_fieldBlank") %>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)  %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+max <- ceiling(max(dplyr::select_if(oc_station_aft, is.numeric), na.rm = TRUE))
+
+fig4_after <- ggplot(oc_station_aft, mapping = aes(x = city, y = val, fill = type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+   scale_fill_discrete(labels = c("Mean OC (QA)", "Mean OC Active Blank (QB)",
+    "Passive Travel and Field Blank")) +
+  scale_y_continuous(limits = c(0, max), breaks = 0:max) +
+  theme(legend.title = element_blank(),
+        axis.text=element_text(size=15), axis.title = element_text(size=15)) +
+  labs(y =   expression(Total ~ OC ~ Concentration ~ (mu ~ g / m ^ 3)), x = "",
+       title = "")  +
+  scale_x_discrete(
+    labels = function(labels) {
+      fixedLabels <- c()
+      for (l in 1:length(labels)) {
+        fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+      }
+      return(fixedLabels)
+    }
+  )
+
+
+# save both plots 
+
+# save the before plot 
+png(file = paste0(wd$figure,"mean_oc_by_site_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig4_before
+save(file = paste0(wd$figure, "mean_oc_by_site_2003_2009.png"), fig4_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"mean_oc_by_site_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig4_after
+save(file = paste0(wd$figure, "mean_oc_by_site_2010_2019.png"), fig4_after)
+dev.off()
+
+#save_plots(fig4_before, fig4_after, "mean_oc_by_site")
+
+dat2 <- merge(oc_station_aft[,c("city", "type", "val")], oc_station[,c("city", "type", "val")], by = c("city", "type"))
+dat2$diff <- dat2$val.x - dat2$val.y
+dat2$perc <- dat2$val.x/dat2$val.y 
+mean(dat2$diff, na.rm = TRUE)
+
+dat2 %>%
+  group_by(city) %>%
+  summarise(mean(diff))
+```
+
+
+
+
+
+```{r}
+## PBW analysis 
+
+plot(x = spec_after_cutoff$PBW_h, y = spec_after_cutoff$PBW_molar_conc_H)
+
+lm(spec_after_cutoff$PBW_molar_conc_H ~ spec_after_cutoff$PBW_h)
+
+```
+
+\newpage
+
+# Reconstructed $PM_{2.5}$ mass by major component and site  
+When calculating the major components, observations from the spectation sampler
+were used. For a given day, if the spectation observations were missing, and the
+site had pm 2.5 sampler observations (PM2.5 Manual Air Sampler) was used. This
+affected the observations for Montreal and Canterbury from 2010-2019. 
+
+```{r, echo = FALSE, message = FALSE,  warning = FALSE}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Fig 5: Reconstructed PM 2.5 for Apr-Sept & Oct-March
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#calc_percent <- spec_after_cutoff %>% 
+#  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+#         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+#         pbw_perc = PBW_dat/total) %>%
+#  mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+#  select(nacl_perc, soil_perc, ec_perc, om_perc, ano3_perc, aso4_perc, 
+#         pbw_perc, city, season)  %>% 
+#  group_by(city, season) %>%
+#  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)
+
+calc_percent <- spec_after_cutoff %>% 
+  mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+  group_by(city, season) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  mutate(total = NaCl_dat + SOIL_dat +EC_dat + OM_dat + 
+                 ANO3_dat + ASO4_dat + PBW_dat) %>% 
+  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+         pbw_perc = PBW_dat/total) %>%
+  select(nacl_perc, soil_perc, ec_perc, om_perc, ano3_perc, aso4_perc, 
+         pbw_perc, city, season)  
+
+# calc_percent_before <- spec_before_cutoff %>% 
+#   mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+#          om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+#          pbw_perc = PBW_dat/total) %>%
+#   mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+#   select(nacl_perc, soil_perc, ec_perc, om_perc, ano3_perc, aso4_perc, 
+#          pbw_perc, city, season)  %>% 
+#   group_by(city, season) %>%
+#   dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)
+
+
+calc_percent_before <- spec_before_cutoff %>% 
+  mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+  group_by(city, season) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  mutate(total = NaCl_dat + SOIL_dat + EC_dat + OM_dat + 
+                 ANO3_dat + ASO4_dat + PBW_dat) %>% 
+  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+         pbw_perc = PBW_dat/total) %>%
+  select(nacl_perc, soil_perc, ec_perc, om_perc, ano3_perc, aso4_perc, 
+         pbw_perc, city, season) 
+
+calc_percent_summer <- calc_percent %>%
+  filter(season == "summer")
+
+calc_percent_winter <- calc_percent %>%
+  filter(season == "winter")
+
+calc_percent_summer_before <- calc_percent_before %>%
+  filter(season == "summer")
+
+calc_percent_winter_before <- calc_percent_before %>%
+  filter(season == "winter")
+
+calc_percent_winter$aso4_pbw <- calc_percent_winter$aso4_perc + calc_percent_winter$pbw_perc
+calc_percent_summer$aso4_pbw <- calc_percent_summer$aso4_perc + calc_percent_summer$pbw_perc
+calc_percent_winter$aso4_ano3 <- calc_percent_winter$aso4_perc + calc_percent_winter$ano3_perc
+calc_percent_summer$aso4_ano3 <- calc_percent_summer$aso4_perc + calc_percent_summer$ano3_perc
+calc_percent_summer_before$aso4_pbw <- calc_percent_summer_before$aso4_perc + calc_percent_summer_before$pbw_perc
+calc_percent_winter_before$aso4_pbw <- calc_percent_winter_before$aso4_perc + calc_percent_winter_before$pbw_perc
+
+
+# aso4 + pbw 
+min(calc_percent_summer$aso4_pbw*100)
+max(calc_percent_summer$aso4_pbw*100)
+
+min(calc_percent_winter$aso4_pbw*100)
+max(calc_percent_winter$aso4_pbw*100)
+
+# NaCl
+min(calc_percent_summer$nacl_perc*100)
+max(calc_percent_summer$nacl_perc*100)
+
+min(calc_percent_winter$nacl_perc*100)
+max(calc_percent_winter$nacl_perc*100)
+
+# Soil
+min(calc_percent_summer$soil_perc*100)
+max(calc_percent_summer$soil_perc*100)
+
+min(calc_percent_winter$soil_perc*100)
+max(calc_percent_winter$soil_perc*100)
+
+calc_percent_summer$nacl_perc
+calc_percent_winter$nacl_perc
+
+
+calc_percent_winter_before$nacl_perc
+calc_percent_winter_before$nacl_perc
+
+calc_percent_summer$nacl_perc/calc_percent_summer_before$nacl_perc
+calc_percent_winter$nacl_perc/calc_percent_winter_before$nacl_perc
+
+calc_percent_summer_before$nacl_perc/calc_percent_summer$nacl_perc
+calc_percent_winter_before$nacl_perc/calc_percent_winter$nacl_perc
+
+
+# ANO3 
+min(calc_percent_summer$ano3_perc*100)
+max(calc_percent_summer$ano3_perc*100)
+
+min(calc_percent_winter$ano3_perc*100)
+max(calc_percent_winter$ano3_perc*100)
+
+calc_percent_winter$ano3_perc/calc_percent_summer$ano3_perc
+
+calc_percent_summer$ano3_perc/calc_percent_summer_before$ano3_perc
+calc_percent_winter$ano3_perc/calc_percent_winter_before$ano3_perc
+
+(calc_percent_winter$aso4_perc + calc_percent_winter$pbw_perc)/(calc_percent_winter_before$aso4_perc + calc_percent_winter_before$pbw_perc)
+(calc_percent_summer$aso4_perc + calc_percent_summer$pbw_perc)/(calc_percent_summer_before$aso4_perc + calc_percent_summer_before$pbw_perc)
+
+
+
+
+
+dat2 <- merge(calc_percent_winter, calc_percent_winter_before, by = c("city"))
+#dat2$diff <- dat2$median.x - dat2$median.y
+dat2$perc <- dat2$nacl_perc.y/dat2$nacl_perc.x #dec
+dat2$perc_aso4_pbw <- dat2$aso4_pbw.x/dat2$aso4_pbw.y #inc
+dat2$ano3_perc.x/dat2$ano3_perc.y
+dat2$ano3_perc.x/dat2$ano3_perc.y
+
+dat2_summ <- merge(calc_percent_summer, calc_percent_summer_before, by = c("city"))
+#dat2_summ$diff <- dat2_summ$median.x - dat2_summ$median.y
+dat2_summ$perc <- dat2_summ$nacl_perc.y/dat2_summ$nacl_perc.x #dec
+dat2_summ$perc_aso4_pbw <- dat2_summ$aso4_pbw.x/dat2_summ$aso4_pbw.y #inc
+dat2_summ$perc_aano3 <- dat2_summ$ano3_perc.x/dat2_summ$ano3_perc.y #inc
+```
+
+
+```{r, echo = FALSE, message = FALSE,  warning = FALSE, fig.height = 5, fig.cap = "Reconstructed $PM_{2.5}$ mass by compound mean"}
+comp_station_april_sept_before <- spec_before_cutoff %>%
+  filter(4 <= month & month <= 9) %>% 
+  dplyr::select("city", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", "ANO3_dat", "ASO4_dat", "PBW_dat")%>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", "OM" = "OM_dat", 
+                "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat","PBW" = "PBW_dat" ) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+comp_station_oct_mar_before <- spec_before_cutoff %>%
+  filter(month <= 3 | month >= 10) %>% 
+  dplyr::select("city", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", "ANO3_dat", "ASO4_dat", "PBW_dat")%>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", "OM" = "OM_dat", 
+                "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat","PBW" = "PBW_dat" ) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+comp_station_april_sept_after <- spec_after_cutoff %>%
+  filter(4 <= month & month <= 9) %>% 
+  dplyr::select("city", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", "ANO3_dat", "ASO4_dat", "PBW_dat")%>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", "OM" = "OM_dat", 
+                "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat","PBW" = "PBW_dat" ) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+comp_station_oct_mar_after <- spec_after_cutoff %>%
+  filter(month <= 3 | month >= 10) %>% 
+  dplyr::select("city", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", "ANO3_dat", "ASO4_dat", "PBW_dat")%>%
+  group_by(city) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", "OM" = "OM_dat", 
+                "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat","PBW" = "PBW_dat" ) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+
+
+fig5_summer_before <- ggplot(comp_station_april_sept_before, mapping = aes(x = city, y = val, 
+        fill = factor(type, levels = c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 12), breaks = seq(0,12,2)) + 
+  #theme(legend.position = c(0.95, 0.8), legend.title = element_blank()) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "April to September (2003-2009)") +
+  theme(axis.text=element_text(size = 22), legend.text=element_text(size = 18),
+        axis.title = element_text(size = 22), plot.title = element_text(size=22),
+        legend.title = element_blank()) +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+
+fig5_winter_before <- ggplot(comp_station_oct_mar_before, mapping = aes(x = city, y = val, 
+        fill = factor(type, levels = c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 12), breaks = seq(0,12,2)) + 
+  #theme(legend.position =  c(0.95, 0.8), legend.title = element_blank()) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "October to March (2003-2009)")  + 
+  theme(axis.text=element_text(size = 22), legend.text=element_text(size = 18),
+        axis.title = element_text(size = 22), plot.title = element_text(size=22),
+        legend.title = element_blank()) +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+fig5_summer_after <- ggplot(comp_station_april_sept_after, mapping = aes(x = city, y = val, 
+        fill = factor(type, levels = c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 9), breaks = seq(0,9,3)) + 
+  #theme(legend.position = c(0.95, 0.8), legend.title = element_blank()) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "April to September (2010-2019)") +
+  theme(axis.text=element_text(size = 22), legend.text=element_text(size = 18),
+        axis.title = element_text(size = 22), plot.title = element_text(size=22),
+        legend.title = element_blank()) +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+
+fig5_winter_after <- ggplot(comp_station_oct_mar_after, mapping = aes(x = city, y = val, 
+        fill = factor(type, levels = c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 9), breaks = seq(0,9,3)) + 
+  #theme(legend.position =  c(0.95, 0.8), legend.title = element_blank()) + 
+  labs(y = expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "October to March (2010-2019)")  + 
+  theme(legend.title = element_blank(), axis.text=element_text(size = 22), 
+        legend.text=element_text(size = 22),
+        axis.title = element_text(size = 18), plot.title = element_text(size=22)) +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+#grid.arrange(fig5_summer_before, fig5_winter_before, fig5_summer_after, 
+#             fig5_winter_after, ncol=2)
+
+
+ggarrange(fig5_summer_before, fig5_winter_before, 
+              fig5_summer_after, fig5_winter_after, ncol=2,nrow = 2, common.legend = TRUE, legend="right")  %>%
+    ggexport(filename =paste0(wd$figure, "reconstructed_pm25_component_by_site.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"reconstructed_pm25_component_by_site_2003_2009_summer.png"), width = 700, 
+    height = 700, units = "px")
+fig5_summer_before
+save(file = paste0(wd$figure, "reconstructed_pm25_component_by_site_2003_2009_summer.png"), fig5_summer_before)
+dev.off()
+
+
+png(file = paste0(wd$figure,"reconstructed_pm25_component_by_site_2003_2009_winter.png"), width = 700, 
+    height = 700, units = "px")
+fig5_winter_before
+save(file = paste0(wd$figure, "reconstructed_pm25_component_by_site_2003_2009_winter.png"), fig5_winter_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"reconstructed_pm25_component_by_site_2010_2019_summer.png"), width = 700, 
+    height = 700, units = "px")
+fig5_summer_after
+save(file = paste0(wd$figure, "reconstructed_pm25_component_by_site_2010_2019_summer.png"), fig5_summer_after)
+dev.off()
+
+png(file = paste0(wd$figure,"reconstructed_pm25_component_by_site_2010_2019_winter.png"), width = 700, 
+    height = 700, units = "px")
+fig5_winter_after
+save(file = paste0(wd$figure, "reconstructed_pm25_component_by_site_2010_2019_winter.png"), fig5_winter_after)
+dev.off()
+```
+
+\newpage 
+
+# Reconstructed $PM_{2.5}$ mass by 10 highest mass days and site  
+To generate the following figure, the days with the largest $PM_{2.5}$ mass that
+had observations for all reconstructed components were used. (i.e. there were days
+that had larger masses than used, but were missing observations)
+
+For 2010-2019, Golden, Montreal and Canterbury contained at least one 
+missing observation each day.  
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Reconstructed $PM_{2.5}$ mass by mean compound for the 10 highest mass concentration days"}
+
+# Paper stated that "Mean total mass concentration exceeded 30 mg m3 for the 10 
+# highest days at the Ontario and Quebec urban sites in both summer and winter". 
+# Statement is inconsistent with my findings, mean total mass for those sites
+# were (27, 39) for summer and (24, 50) in winter. 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Fig 6: Reconstructed PM 2.5 for 10 highest days Apr-Sept & Oct-March
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+calc_percent <- spec_after_cutoff %>% 
+  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+         pbw_perc = PBW_dat/total) %>%
+  mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+  select(nacl_perc, soil_perc, ec_perc, om_perc, ano3_perc, aso4_perc, 
+         pbw_perc, city, season, spec_pm2_5)  
+
+calc_percent <- spec_after_cutoff %>% 
+  mutate(season = ifelse(4 <= month & month <= 9, "summer", "winter")) %>%
+  group_by(city, season) %>%
+  #dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  select(city, season,NaCl_dat , SOIL_dat ,EC_dat , OM_dat , 
+                 ANO3_dat , ASO4_dat , PBW_dat, spec_pm2_5)  
+
+
+calc_percent_summer <- calc_percent %>%
+  filter(season == "summer")  %>% 
+  group_by(city) %>%
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)   %>%
+  mutate(total = NaCl_dat + SOIL_dat +EC_dat + OM_dat + 
+                 ANO3_dat + ASO4_dat + PBW_dat) %>%
+  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+         pbw_perc = PBW_dat/total) 
+
+calc_percent_winter <- calc_percent %>%
+  filter(season == "winter") %>% 
+  group_by(city) %>%
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)   %>%
+  mutate(total = NaCl_dat + SOIL_dat +EC_dat + OM_dat + 
+                 ANO3_dat + ASO4_dat + PBW_dat) %>%
+  mutate(nacl_perc = NaCl_dat/total, soil_perc = SOIL_dat/total, ec_perc = EC_dat/total,
+         om_perc = OM_dat/total, ano3_perc = ANO3_dat/total, aso4_perc = ASO4_dat/total, 
+         pbw_perc = PBW_dat/total) 
+
+
+
+comp_station_renamed_before <- spec_before_cutoff %>%
+  dplyr::select("city","month", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", 
+                "ANO3_dat", "ASO4_dat", "PBW_dat", spec_pm2_5, total) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat",
+                "OM" = "OM_dat", "ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat",
+                "PBW" = "PBW_dat" ) 
+
+
+comp_station_renamed_after <- spec_after_cutoff %>%
+  dplyr::select("city","month", "NaCl_dat", "SOIL_dat", "EC_dat", "OM_dat", 
+                "ANO3_dat", "ASO4_dat", "PBW_dat", spec_pm2_5, total) %>%
+  dplyr::rename(NaCl = NaCl_dat, "SOIL" = "SOIL_dat", "EC" = "EC_dat", 
+                "OM" = "OM_dat","ANO3" = "ANO3_dat", "ASO4" = "ASO4_dat",
+                "PBW" = "PBW_dat" ) 
+
+
+comp_station_renamed_after$na_count <- apply(comp_station_renamed_after, 1, 
+                                             function(x) sum(is.na(x)))
+
+
+highest_10_april_sept_before <-  comp_station_renamed_before %>%
+  filter(4 <= month & month <= 9) %>%
+  group_by(city) %>%
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>%
+  select(-c(spec_pm2_5, month, total)) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+highest_10_oct_mar_before <- comp_station_renamed_before %>% 
+  filter((month <= 3 | month >= 10 )) %>% 
+  group_by(city) %>% 
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>% 
+  select(-c(spec_pm2_5, month , total)) %>% 
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+highest_10_april_sept_after <-  comp_station_renamed_after %>%
+  filter(4 <= month & month <= 9 & na_count == 0) %>%
+  group_by(city) %>%
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>% 
+  select(-c(spec_pm2_5, month , total, na_count)) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE)  %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+highest_10_oct_mar_after <-  comp_station_renamed_after %>%
+  filter((month <= 3 | month >= 10 )& na_count == 0) %>% 
+  group_by(city) %>%
+  arrange(desc(spec_pm2_5)) %>%
+  slice(1:10) %>% 
+  select(-c(spec_pm2_5, month, total, na_count)) %>%
+  dplyr::summarise_if(is.numeric, mean, na.rm = TRUE) %>%
+  pivot_longer(!city, names_to = "type", values_to = "val") %>%
+  filter(!is.na(val))
+
+
+
+fig6_summer_before <- ggplot(highest_10_april_sept_before, 
+       mapping = aes(x = city, y = val, fill = factor(type, levels = 
+                     c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 35), breaks = seq(0,35,5)) +  
+  theme(legend.title = element_blank()) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "April to September (2003 -2009)") + 
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+
+fig6_winter_before <- ggplot(highest_10_oct_mar_before, 
+       mapping = aes(x = city, y = val,fill = factor(type, levels =
+                     c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,5)) +  
+  theme(legend.title = element_blank()) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "October to March (2003 -2009)") +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+fig6_summer_after <- ggplot(highest_10_april_sept_after, 
+       mapping = aes(x = city, y = val, fill = factor(type, levels = 
+                     c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 35), breaks = seq(0,35,5)) + 
+  theme(legend.title = element_blank(), axis.text=element_text(size=12), 
+        legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) +
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "April to September") + 
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+
+fig6_winter_after <- ggplot(highest_10_oct_mar_after, 
+       mapping = aes(x = city, y = val,fill = factor(type, levels =
+                     c("NaCl", "SOIL", "EC", "OM", "ANO3", "ASO4", "PBW")))) + 
+  geom_bar(stat="identity", position=position_stack()) + 
+  scale_y_continuous(limits = c(0, 35), breaks = seq(0,35,5)) +   
+  theme(legend.title = element_blank(), axis.text=element_text(size=12), 
+        legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  labs(y =   expression(paste(PM[2.5], " Mass (",mu, "g/",m^3,")")), x = "",
+       title = "October to March") +
+  scale_x_discrete(labels = function(labels) {
+    fixedLabels <- c()
+    for (l in 1:length(labels)) {
+      fixedLabels[l] <- paste0(ifelse(l %% 2 == 0, '', '\n'), labels[l])
+    }
+    return(fixedLabels)
+  })
+
+
+
+#ggarrange(fig6_summer_before, fig6_summer_after, fig6_winter_before, 
+#             fig6_winter_after, ncol=2,nrow = 2, common.legend = TRUE, legend="right") %>%
+#  ggexport(filename =paste0(wd$figure, "largest10_reconstructed_pm25_component_by_site.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"largest10_reconstructed_pm25_component_by_site_2003_2009_summer.png"), width = 700, 
+    height = 700, units = "px")
+fig6_summer_before
+save(file = paste0(wd$figure, "largest10_reconstructed_pm25_component_by_site_2003_2009_summer.png"), fig6_summer_before)
+dev.off()
+
+
+png(file = paste0(wd$figure,"largest10_reconstructed_pm25_component_by_site_2003_2009_winter.png"), width = 700, 
+    height = 700, units = "px")
+fig6_winter_before
+save(file = paste0(wd$figure, "largest10_reconstructed_pm25_component_by_site_2003_2009_winter.png"), fig6_winter_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"largest10_reconstructed_pm25_component_by_site_2010_2019_summer.png"), width = 700, 
+    height = 700, units = "px")
+fig6_summer_after
+save(file = paste0(wd$figure, "largest10_reconstructed_pm25_component_by_site_2010_2019_summer.png"), fig6_summer_after)
+dev.off()
+
+png(file = paste0(wd$figure,"largest10_reconstructed_pm25_component_by_site_2010_2019_winter.png"), width = 700, 
+    height = 700, units = "px")
+fig6_winter_after
+save(file = paste0(wd$figure, "largest10_reconstructed_pm25_component_by_site_2010_2019_winter.png"), fig6_winter_after)
+dev.off()
+```
+
+\newpage
+
+# Median ammonium sulphate and ammonium nitrate concentrations by site and month 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height= 6.5, fig.cap = "Ammonium sulphate and ammonium nitrate concentrations by site and month (mean and inter-quartile range)" }
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 7: Ammonia Sulphate and Nitrate 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# calculate our summary statistics 
+getAmmon <- function(dat){
+  ammon_compnd <- dat %>%
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, ASO4_dat, ANO3_dat, month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(ASO4 = median(ASO4_dat, na.rm = TRUE),  
+                     ANO3 = median(ANO3_dat, na.rm = TRUE),
+                     lwr_quantile_aso4 = quantile(ASO4_dat, na.rm = TRUE, probs = 0.25),
+                     upr_quantile_aso4 = quantile(ASO4_dat, na.rm = TRUE, probs = 0.75),
+                     lwr_quantile_ano3 = quantile(ANO3_dat, na.rm = TRUE, probs = 0.25),
+                     upr_quantile_ano3 = quantile(ANO3_dat, na.rm = TRUE, probs = 0.75)) 
+  
+  
+  # need to structure the df (city, month, compound, value, lower IQR, upper IQR) 
+  # for easy plotting - there is probably a much easier way to do this! 
+  #------------------------------------------------------------------------------
+  # start by putting the IQR in the correct format 
+  ano3_IQR <- ammon_compnd %>%
+    select(c(city, month_text, lwr_quantile_ano3, upr_quantile_ano3)) %>%
+    mutate(compound = "ANO3") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_ano3,  upper_iqr = upr_quantile_ano3)
+  
+  aso4_IQR <- ammon_compnd %>%
+    select(c(city, month_text, lwr_quantile_aso4, upr_quantile_aso4)) %>%
+    mutate(compound = "ASO4") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_aso4,  upper_iqr = upr_quantile_aso4)
+  
+  ammon_iqr <- bind_rows(ano3_IQR, aso4_IQR)
+  
+  # Then merge the IQR back with the original df 
+  ammon_compnd_median <- ammon_compnd %>%
+    select(c(city, month_text, ASO4, ANO3)) %>%
+    pivot_longer(!c(city, month_text), names_to = "compound", values_to = "median") %>%
+    filter(!is.na(median))
+  
+  merge(ammon_compnd_median, ammon_iqr, by = c("city", "month_text", "compound"))
+}
+
+ammon_dat_before <- getAmmon(spec_data %>% filter(date < dividing_Date))
+ammon_dat_after <- getAmmon(spec_data %>% filter(date >= dividing_Date))
+
+max <- ceiling(max(c(ammon_dat_before$upper_iqr), na.rm = TRUE))  
+
+# lets plot! 
+fig7_before <- ggplot(data = ammon_dat_before, mapping = aes(x = month_text, y = median, colour = compound, linetype = compound,
+                                          group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0, max,2)) + 
+  scale_linetype_manual(values = c("ANO3" = "dashed", "ASO4" = "solid")) + 
+  labs(y =   expression(paste("Ammonium Sulphate/Ammonium Nitrate (",mu ,"g/",m^3,")")), 
+       x = "Month",  title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+max <- ceiling(max(ammon_dat_after$upper_iqr,na.rm = TRUE))
+
+fig7_after <- ggplot(data = ammon_dat_after, mapping = aes(x = month_text, y = median, colour = compound, linetype = compound,
+                                          group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  scale_y_continuous(limits = c(0, max  ), breaks = seq(0,max,2)) + 
+  scale_linetype_manual(values = c("ANO3" = "dashed", "ASO4" = "solid")) + 
+  labs(y =   expression(paste("Ammonium Sulphate/Ammonium Nitrate (",mu ,"g/",m^3,")")), 
+       x = "Month",  title = "")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+#ggarrange(fig7_before, fig7_after, ncol=1,nrow = 2, common.legend = TRUE, legend="right")  %>%
+#  ggexport(filename =paste0(wd$figure, "median_aso4_ano3_by_site_month.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_aso4_ano3_by_site_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig7_before
+save(file = paste0(wd$figure, "median_aso4_ano3_by_site_month_2003_2009.png"), fig7_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_aso4_ano3_by_site_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig7_after
+save(file = paste0(wd$figure, "median_aso4_ano3_by_site_month_2010_2019.png"), fig7_after)
+dev.off()
+
+
+# claculate some summary stuff
+a <- ammon_dat_after %>% filter(compound == "ASO4") %>% filter(!city %in% c("Toronto", "Windsor", "Simcoe"))
+mean(a$median)
+
+a <- ammon_dat_after %>% filter(compound == "ASO4") %>% filter(city %in% c("Toronto", "Windsor", "Simcoe"))
+mean(a$median)
+
+ammon_dat_after %>% 
+  filter(compound == "ANO3") %>% 
+  group_by(city) %>% 
+  mutate(max_val = max(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val)
+
+ammon_dat_before %>% 
+  filter(compound == "ANO3") %>% 
+  group_by(city) %>% 
+  mutate(max_val = max(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val)
+```
+
+\newpage 
+
+# Median elemental carbon (EC) and organic matter (OM) concentrations by site and month 
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 6.5, fig.cap = "Elemental carbon (EC) and organic matter (OM) by site and month (mean and inter-quartile range)"}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 8: EC and OC
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+getECOC <- function(dat){
+  # calculate our summary statisitcs 
+  carb_compnd <- dat %>%
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, EC_dat, OM_dat, month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(EC = median(EC_dat, na.rm = TRUE)*3,  
+                     OM = median(OM_dat, na.rm = TRUE),
+                     lwr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.25)*3,
+                     upr_quantile_EC = quantile(EC_dat, na.rm = TRUE, probs = 0.75)*3,
+                     lwr_quantile_OM = quantile(OM_dat, na.rm = TRUE, probs = 0.25),
+                     upr_quantile_OM = quantile(OM_dat, na.rm = TRUE, probs = 0.75)) 
+  
+  
+  # need to structure the df (city, month, compound, value, lower IQR, upper IQR) 
+  # for easy plotting - there is probably a much easier way to do this! 
+  #------------------------------------------------------------------------------
+  # start by putting the IQR in the correct format 
+  om_IQR <- carb_compnd %>%
+    select(c(city, month_text, lwr_quantile_OM, upr_quantile_OM)) %>%
+    mutate(compound = "OM") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_OM,  upper_iqr = upr_quantile_OM)
+  
+  ec_IQR <- carb_compnd %>%
+    select(c(city, month_text, lwr_quantile_EC, upr_quantile_EC)) %>%
+    mutate(compound = "EC") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_EC,  upper_iqr = upr_quantile_EC)
+  
+  carb_iqr <- bind_rows(om_IQR, ec_IQR)
+  
+  # Then merge the IQR back with the original df 
+  carb_compnd_median <- carb_compnd %>%
+    select(c(city, month_text, OM, EC)) %>%
+    mutate(EC = EC) %>%
+    pivot_longer(!c(city, month_text), names_to = "compound", values_to = "median")  %>%
+    filter(!is.na(median)) 
+  
+  merge(carb_compnd_median, carb_iqr, by = c("city", "month_text", "compound"))
+}
+
+ecoc_dat_before <- getECOC(spec_data %>% filter(date < dividing_Date))
+ecoc_dat_after <- getECOC(spec_data %>% filter(date >= dividing_Date))
+
+
+max <- ceiling(max(c(ecoc_dat_after$upper_iqr, ecoc_dat_before$upper_iqr), 
+           na.rm = TRUE))  
+
+
+# lets plot! 
+fig8_before <- ggplot(data = ecoc_dat_before, mapping = aes(x = month_text, y = median, colour = compound, linetype = compound,
+                                          group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,3),
+                     expression(paste("OM (",mu ,"g/",m^3,")")), 
+                     sec.axis = sec_axis(~ . / 3, name = expression(paste("EC (",mu ,"g/",m^3,")")),
+                                         breaks = seq(0,6,1))) +
+  scale_linetype_manual(values = c("EC" = "dashed", "OM" = "solid")) + 
+  labs(x = "Month",  title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) + 
+    theme(axis.line.y.right = element_line(color = "#F8766D"),
+          axis.text.y.right = element_text(color = "#F8766D"),
+          axis.line.y.left = element_line(color = "#00BFC4"),
+          axis.text.y.left = element_text(color = "#00BFC4"))
+
+max <- ceiling(max(c(ecoc_dat_after$upper_iqr), 
+           na.rm = TRUE))  
+
+
+
+fig8_after <- ggplot(data = ecoc_dat_after, mapping = aes(x = month_text, 
+                                                          y = median, colour = compound, 
+                                                          linetype = compound,
+                                          group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,3),
+                     expression(paste("OM (",mu ,"g/",m^3,")")), 
+                     sec.axis = sec_axis(~ . / 3, name = expression(paste("EC (",mu ,"g/",m^3,")")))) +
+  scale_linetype_manual(values = c("EC" = "dashed", "OM" = "solid")) + 
+  labs(x = "Month",  title = "")  + 
+    theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) + 
+    theme(axis.line.y.right = element_line(color = "#F8766D"),
+          axis.text.y.right = element_text(color = "#F8766D"),
+          axis.line.y.left = element_line(color = "#00BFC4"),
+          axis.text.y.left = element_text(color = "#00BFC4"))
+
+
+
+ ggplot(data = ecoc_dat_after %>% filter(compound == "OM"), mapping = aes(x = month_text, y = median,  ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3)  
+  
+#ggarrange(fig8_before, fig8_after, ncol=1,nrow = 2, common.legend = TRUE, legend="right")  %>%
+#  ggexport(filename =paste0(wd$figure, "median_ec_oc_by_site_month.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_ec_oc_by_site_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig8_before
+save(file = paste0(wd$figure, "median_ec_oc_by_site_month_2003_2009.png"), fig8_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_ec_oc_by_site_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig8_after
+save(file = paste0(wd$figure, "median_ec_oc_by_site_month_2010_2019.png"), fig8_after)
+dev.off()
+
+
+# calculate some summary stuff
+a <- ecoc_dat_after %>% filter(compound == "OM") 
+mean(a$median)
+
+
+# Divide by 3 b.c. EC was multiplied by 3 for the scale 
+ecoc_dat_after %>% 
+  filter(compound == "EC") %>% 
+  group_by(city) %>% 
+  dplyr::mutate(max_val = max(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val) %>%
+  mutate(median = median/3)
+
+ecoc_dat_after %>% 
+  filter(compound == "OM") %>% 
+  group_by(city) %>% 
+  mutate(max_val = min(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val)
+```
+
+
+```{r}
+  # calculate our summary statisitcs 
+  oc_ec_ratio <- spec_data %>% 
+    filter(date >= dividing_Date) %>% 
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, EC_dat, OM_dat, month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(ratio = median(OM_dat/EC_dat, na.rm = TRUE),
+                     lower_iqr = quantile(OM_dat/EC_dat, na.rm = TRUE, probs = 0.25),
+                     upper_iqr = quantile(OM_dat/EC_dat, na.rm = TRUE, probs = 0.75)) %>%
+    filter(!is.na(ratio)) 
+
+
+ggplot(data = oc_ec_ratio, mapping = aes(x = month_text, y = ratio, group = 1,
+                                         ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3, scale = "free") + 
+  labs(x = "Month",  title = "")  + 
+    theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) 
+
+oc_ec_ratio %>%
+  group_by(city) %>%
+  dplyr::summarise(min = min(ratio), max = max(ratio))
+
+
+oc_ec_ratio <- spec_data %>% 
+    filter(date >= dividing_Date) %>% 
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, EC_dat, OM_dat, month_text)
+```
+\newpage 
+
+# Median soil and sodium chloride concentrations by site and month
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 6.5 , fig.cap = "Soil and sodium chloride concentrations by site and month (mean and inter-quartile range)"}
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 9: SOIL and NaCl
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+getSoil_nacl <- function(dat){
+  # calculate our summary statisitcs 
+  fig9_compnd <- dat %>%
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, SOIL_dat, NaCl_dat, month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(SOIL = median(SOIL_dat, na.rm = TRUE),  
+                     NaCl = median(NaCl_dat, na.rm = TRUE),
+                     lwr_quantile_SOIL = quantile(SOIL_dat, na.rm = TRUE, probs = 0.25),
+                     upr_quantile_SOIL = quantile(SOIL_dat, na.rm = TRUE, probs = 0.75),
+                     lwr_quantile_NaCl = quantile(NaCl_dat, na.rm = TRUE, probs = 0.25),
+                     upr_quantile_NaCl = quantile(NaCl_dat, na.rm = TRUE, probs = 0.75)) 
+  
+  
+  
+  soil_IQR <- fig9_compnd %>%
+    select(c(city, month_text, lwr_quantile_SOIL, upr_quantile_SOIL)) %>%
+    mutate(compound = "SOIL") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_SOIL,  upper_iqr = upr_quantile_SOIL)
+  
+  nacl_IQR <- fig9_compnd %>%
+    select(c(city, month_text, lwr_quantile_NaCl, upr_quantile_NaCl)) %>%
+    mutate(compound = "NaCl") %>%
+    dplyr::rename(lower_iqr = lwr_quantile_NaCl,  upper_iqr = upr_quantile_NaCl)
+  
+  fig9_iqr <- bind_rows(soil_IQR, nacl_IQR)
+  
+  # Then merge the IQR back with the original df 
+  fig9_compnd_median <- fig9_compnd %>%
+    select(c(city, month_text, SOIL, NaCl)) %>%
+    pivot_longer(!c(city, month_text), names_to = "compound", values_to = "median")  %>%
+    filter(!is.na(median))
+  
+  merge(fig9_compnd_median, fig9_iqr, by = c("city", "month_text", "compound"))
+}
+
+soil_nacl_dat_before <- getSoil_nacl(spec_data %>% filter(date < dividing_Date)) #spec_before_cutoff)
+soil_nacl_dat_after <- getSoil_nacl(spec_data %>% filter(date >= dividing_Date)) #spec_after_cutoff)
+
+
+max <- round(max(soil_nacl_dat_before$upper_iqr, na.rm = TRUE)) + 0.5
+
+
+# lets plot! 
+fig9_before <- ggplot(data = soil_nacl_dat_before, mapping = aes(x = month_text, y = median, colour = compound, linetype = compound,
+                                       group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,0.5)) + 
+  scale_linetype_manual(values = c("NaCl" = "dashed", "SOIL" = "solid")) + 
+  labs(y = expression(paste("Soil/Sodium Chloride (",mu ,"g/",m^3,")")), 
+       x = "Month", title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+max <- ceiling(max(soil_nacl_dat_after$upper_iqr, na.rm = TRUE))  
+
+
+
+fig9_after <- ggplot(data = soil_nacl_dat_after, mapping = aes(x = month_text, y = median, colour = compound, linetype = compound,
+                                       group = compound, ymin = lower_iqr, ymax = upper_iqr)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,0.5)) + 
+  scale_linetype_manual(values = c("NaCl" = "dashed", "SOIL" = "solid")) + 
+  theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  labs(y = expression(paste("Soil/Sodium Chloride (",mu ,"g/",m^3,")")), 
+       x = "Month", title = "")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+#ggarrange(fig9_before, fig9_after, ncol=1,nrow = 2, common.legend = TRUE, legend="right")  %>%
+#  ggexport(filename =paste0(wd$figure, "median_soil_nacl_by_site_month.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_soil_nacl_by_site_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig9_before
+save(file = paste0(wd$figure, "median_soil_nacl_by_site_month_2003_2009.png"), fig9_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_soil_nacl_by_site_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig9_after
+save(file = paste0(wd$figure, "median_soil_nacl_by_site_month_2010_2019.png"), fig9_after)
+dev.off()
+
+
+
+# calculate some summary stuff
+a <- soil_nacl_dat_before %>% filter(compound == "NaCl") 
+mean(a$median)
+
+a <- spec_data %>% filter(date < dividing_Date) %>% select(NaCl_dat)
+mean(a$NaCl_dat, na.rm = TRUE)
+
+
+
+soil_nacl_dat_after %>% 
+  filter(compound == "NaCl") %>% 
+  group_by(city) %>% 
+  dplyr::mutate(max_val = min(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val)
+
+
+soil_nacl_dat_after %>% 
+  filter(compound == "SOIL") %>% 
+  group_by(city)
+
+```
+
+
+```{r}
+#WEATHER EFFECTS/RELATIONSHIP
+names(spec_after_cutoff)
+
+ggplot(data = spec_after_cutoff %>% filter(city == "Toronto"), mapping = aes(x = date, y = SOIL_dat, colour = spec_temp)) + 
+  geom_point() + 
+  #geom_smooth(method="loess",se=TRUE) +
+  #geom_smooth(method="lm", se=TRUE, fill=NA,formula=lm(spec_after_cutoff$SOIL_dat ~ poly(1:length(spec_after_cutoff$date), 3, raw=TRUE)),colour="red") +
+  stat_smooth(method="lm", se=TRUE, fill=NA,
+                formula=y ~ poly(x, 3, raw=TRUE),colour="red") +
+  #geom_line() +
+  #geom_errorbar() +
+  #facet_wrap(~ city, nrow = 3) +
+  scale_colour_gradient(
+  low = "#000000",
+  high = "#56B1F7",
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "colour"
+)
+
+```
+
+
+\newpage
+
+# Ammonia mixing ratio by site and month 
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 4.5 , fig.cap = "Ammonia mixing ratio by site and month (median and inter-quartile range)"}
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 10: Ammonia - cart c
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# calculate our summary statisitcs 
+ammonia_compnd_before <- spec_before_cutoff %>%
+  mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+  select(city, ammonia_ic_spec_ammonia, month_text) %>%
+  group_by(city, month_text) %>%
+  dplyr::summarise(Ammonia = median(ammonia_ic_spec_ammonia, na.rm = TRUE),  
+                   lwr_quantile = quantile(ammonia_ic_spec_ammonia, na.rm = TRUE, probs = 0.25),
+                   upr_quantile = quantile(ammonia_ic_spec_ammonia, na.rm = TRUE, probs = 0.75)) 
+
+
+ammonia_compnd_after <- spec_after_cutoff %>%
+  mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+  select(city, ammonia_ic_spec_ammonia, month_text) %>%
+  group_by(city, month_text) %>%
+  dplyr::summarise(Ammonia = median(ammonia_ic_spec_ammonia, na.rm = TRUE),  
+                   lwr_quantile = quantile(ammonia_ic_spec_ammonia, na.rm = TRUE, probs = 0.25),
+                   upr_quantile = quantile(ammonia_ic_spec_ammonia, na.rm = TRUE, probs = 0.75)) 
+
+
+
+ammonia_compnd_after$city <- factor(ammonia_compnd_after$city, levels=rev(c("Halifax", "Canterbury", 
+                             "Montréal", "Saint-Anicet" , "Toronto", "Simcoe",
+                             "Windsor", "Edmonton", "Golden", "Abbotsford", "Burnaby")))
+
+max_noabbotsford_before <- ammonia_compnd_before %>% filter(city != "Abbotsford")
+max_noabbotsford_after <- ammonia_compnd_after %>% filter(city != "Abbotsford")
+max <- max(c(max_noabbotsford_before$upr_quantile, max_noabbotsford_after$upr_quantile), 
+           na.rm = TRUE)
+
+# lets plot! 
+fig10_before <- ggplot(data = ammonia_compnd_before %>% filter(city != "Abbotsford"),
+       mapping = aes(x = month_text, y = Ammonia,group = 1, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = 0:max) + 
+  labs(y = "Ammonia (ppb)", x = "Month", title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+max <- max(max_noabbotsford_after$upr_quantile, na.rm = TRUE)
+
+fig10_after <- ggplot(data = ammonia_compnd_after %>% filter(city != "Abbotsford"),
+       mapping = aes(x = month_text, y = Ammonia,group = 1, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  scale_y_continuous(limits = c(0, max), breaks = 0:max) + 
+  theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  labs(y = " ", x = "Month",  title = "")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+#ggarrange(fig10_before, fig10_after,  ncol=2,nrow = 1)  %>%
+#  ggexport(filename =paste0(wd$figure, "median_ammonia_mixing_ratio_by_site_month.png"), width = 1400, height = 1400)
+
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_ammonia_mixing_ratio_by_site_mont_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig10_before
+save(file = paste0(wd$figure, "median_ammonia_mixing_ratio_by_site_mont_2003_2009.png"), fig10_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_ammonia_mixing_ratio_by_site_mont_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig10_after
+save(file = paste0(wd$figure, "median_ammonia_mixing_ratio_by_site_mont_2010_2019.png"), fig10_after)
+dev.off()
+
+
+
+a <- spec_data %>% filter(date >= dividing_Date) %>% select(ammonia_ic_spec_ammonia)
+mean(a$ammonia_ic_spec_ammonia, na.rm = TRUE)
+
+
+ammonia_compnd_before %>% 
+  group_by(city) %>% 
+  dplyr::mutate(max_val = max(Ammonia)) %>% 
+  ungroup() %>% 
+  filter(Ammonia==max_val)
+
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height= 1.75, fig.width = 4 , fig.cap = "Ammonia mixing ratio for Abbotsford by month (median and inter-quartile range)"}
+
+max_abbotsford_before <- ammonia_compnd_before %>% filter(city == "Abbotsford")
+max_abbotsford_after <- ammonia_compnd_after %>% filter(city == "Abbotsford")
+max <- max(c(max_abbotsford_before$upr_quantile, max_abbotsford_after$upr_quantile), 
+           na.rm = TRUE)
+
+fig10_abbosford_before <- ggplot(data = ammonia_compnd_before %>% filter(city == "Abbotsford"), 
+       mapping = aes(x = month_text, y = Ammonia,group = 1, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,10)) + 
+  labs(y = "Ammonia (ppb)", x = "Month", title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+fig10_abbosford_after <- ggplot(data = ammonia_compnd_after %>% filter(city == "Abbotsford"), 
+       mapping = aes(x = month_text, y = Ammonia,group = 1, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,10)) + 
+  labs(y = "", x = "Month", title = "2010-2019")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"))
+
+
+abb <- ggarrange(fig10_abbosford_before,fig10_abbosford_after, ncol=2,nrow = 1)  %>%
+  ggexport(filename =paste0(wd$figure, "median_ammonia_mixing_ratio_abbotsford_by_month.png"), width = 1400, height = 1400)
+
+#annotate_figure(abb, top = text_grob("Abbotsford"))
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_ammonia_mixing_ratio_abbotsford_by_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig10_abbosford_before
+save(file = paste0(wd$figure, "median_ammonia_mixing_ratio_abbotsford_by_month_2003_2009.png"), fig10_abbosford_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_ammonia_mixing_ratio_abbotsford_by_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig10_abbosford_after
+save(file = paste0(wd$figure, "median_ammonia_mixing_ratio_abbotsford_by_month_2010_2019.png"), fig10_abbosford_after)
+dev.off()
+```
+
+
+\newpage 
+
+# Median sulphur dioxide mixing ratio and nitric acid concentrations by site and month 
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height= 6.5 , fig.cap = "Sulphur dioxide mixing ratio and nitric acid concentrations by site and month (mean and inter-quartile range)"}
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Figure 11: Sulphur dioxide, nitric acid 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+get_Sulphur_Nitric <- function(specdat){
+  sulphur_compnd <- specdat %>%
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, myso2, month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(median = median(myso2, na.rm = TRUE),  
+                     lwr_quantile = quantile(myso2, na.rm = TRUE, probs = 0.25),
+                     upr_quantile = quantile(myso2, na.rm = TRUE, probs = 0.75)) %>%
+    mutate(compound = "SO2") 
+    
+  nitricacid_compnd <- specdat %>%
+    mutate(month_text = lubridate::month(date, label = TRUE, abbr = TRUE)) %>%
+    select(city, myhno3,  month_text) %>%
+    group_by(city, month_text) %>%
+    dplyr::summarise(median = median(myhno3, na.rm = TRUE)*10,  #multiply by 10 b.c. diff axis
+                     lwr_quantile = quantile(myhno3, na.rm = TRUE, probs = 0.25)*10,
+                     upr_quantile = quantile(myhno3, na.rm = TRUE, probs = 0.75)*10) %>%
+    mutate(compound = "Nitric Acid") 
+  
+  bind_rows(sulphur_compnd, nitricacid_compnd)
+}
+
+
+sulphur_nitric_dat_before <- get_Sulphur_Nitric(spec_data %>% filter(date <= dividing_Date))
+sulphur_nitric_dat_after <- get_Sulphur_Nitric(spec_data %>% filter(date > dividing_Date))
+
+
+
+max <- round(max(c(sulphur_nitric_dat_before$upr_quantile, sulphur_nitric_dat_after$upr_quantile), 
+           na.rm = TRUE), digits = 1)  
+
+
+# lets plot! 
+fig11_before <- ggplot(data = sulphur_nitric_dat_before,
+       mapping = aes(x = month_text, y = median, group = compound, linetype = compound, 
+                     colour = compound, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  #scale_linetype_manual(values = c("SO2" = "dashed", "Nirtic Acid" = "solid")) +
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,2),
+                     expression(paste("Sulphur Dioxide (ppb)")), 
+    sec.axis = sec_axis(~ . / 10, name = expression(paste("Nitric Acid (",mu ,"g/",m^3,")")),
+                        breaks = seq(0,1.2,0.2))) +
+  labs(x = "Month",  title = "2003-2009")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) + 
+  theme(axis.line.y.right = element_line(color = "#F8766D"),
+        axis.text.y.right = element_text(color = "#F8766D"),
+        axis.line.y.left = element_line(color = "#00BFC4"),
+        axis.text.y.left = element_text(color = "#00BFC4"))
+
+
+max <- round(max(sulphur_nitric_dat_after$upr_quantile,  na.rm = TRUE), digits = 1)  
+
+
+fig11_after <- ggplot(data = sulphur_nitric_dat_after,
+       mapping = aes(x = month_text, y = median, group = compound, linetype = compound, 
+                     colour = compound, ymin = lwr_quantile, ymax = upr_quantile)) + 
+  geom_point() + 
+  geom_line() +
+  geom_errorbar() +
+  facet_wrap(~ city, nrow = 3) + 
+  #scale_linetype_manual(values = c("SO2" = "dashed", "Nirtic Acid" = "solid")) +
+    theme(axis.text=element_text(size=12), legend.text=element_text(size=12),
+        axis.title = element_text(size=12), plot.title = element_text(size=15)) + 
+  scale_y_continuous(limits = c(0, max), breaks = seq(0,max,2),
+                     expression(paste("Sulphur Dioxide (ppb)")), 
+    sec.axis = sec_axis(~ . / 10, name = expression(paste("Nitric Acid (",mu ,"g/",m^3,")")),
+                        breaks = seq(0,1.2,0.2))) +
+  labs(x = "Month",  title = "")  + 
+  scale_x_discrete(labels= c("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")) + 
+  theme(axis.line.y.right = element_line(color = "#F8766D"),
+        axis.text.y.right = element_text(color = "#F8766D"),
+        axis.line.y.left = element_line(color = "#00BFC4"),
+        axis.text.y.left = element_text(color = "#00BFC4"))
+
+
+#ggarrange(fig11_before, fig11_after, ncol=1,nrow = 2, common.legend = TRUE, legend="right")  %>%
+#  ggexport(filename =paste0(wd$figure, "median_so2_nitricacid_by_site_month.png"), width = 1400, height = 1400)
+
+# save the before plot 
+png(file = paste0(wd$figure,"median_so2_nitricacid_by_site_month_2003_2009.png"), width = 700, 
+    height = 700, units = "px")
+fig11_before
+save(file = paste0(wd$figure, "median_so2_nitricacid_by_site_month_2003_2009.png"), fig11_before)
+dev.off()
+
+# save the after plot 
+png(file = paste0(wd$figure,"median_so2_nitricacid_by_site_month_2010_2019.png"), width = 700, 
+    height = 700, units = "px")
+fig11_after
+save(file = paste0(wd$figure, "median_so2_nitricacid_by_site_month_2010_2019.png"), fig11_after)
+dev.off()
+
+
+
+sulphur_nitric_dat_after %>% 
+  filter(compound == "Nitric Acid") %>% 
+  group_by(city) %>% 
+  dplyr::mutate(max_val = min(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val) %>%
+  mutate(median = median/10)
+
+sulphur_nitric_dat_after %>% 
+  filter(compound == "SO2") %>% 
+  group_by(city) %>% 
+  dplyr::mutate(max_val = min(median)) %>% 
+  ungroup() %>% 
+  filter(median==max_val) 
+
+dat2 <- merge(sulphur_nitric_dat_before[,c("city", "month_text", "median", "compound")] %>% filter(compound == "SO2"), sulphur_nitric_dat_after[,c("city", "month_text", "median", "compound")] %>% filter(compound == "SO2"), by = c("city", "month_text"))
+dat2$diff <- dat2$median.x - dat2$median.y
+dat2$perc <- dat2$median.y/dat2$median.x
+
+dat2 %>%
+  group_by(city) %>%
+  summarise(mean = mean(diff))
+
+```
+
+\newpage
+
+### References

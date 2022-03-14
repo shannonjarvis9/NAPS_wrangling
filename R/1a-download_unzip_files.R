@@ -47,13 +47,26 @@ file.rename(list.files(pattern="PM2.5Ponctuelles"),
 dir.create(paste0(wd$data,"Hourly/" ))
 setwd(paste0(wd$data,"Hourly/" ))
 
-url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", 
-                 "/ContinuousData-DonneesContinu/HourlyData-DonneesHoraires/?lang=en")
+# url_wo_year <- c("http://data.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", 
+#                  "/ContinuousData-DonneesContinu/HourlyData-DonneesHoraires/?lang=en")
+# 
+# 
+# mapply(function(url) 
+#   system(paste("wget -r -np -t1 -nd -A.csv", 
+#                url)),url = paste0(url_wo_year[1], start_year:end_year, url_wo_year[2]))
 
+types <- c("PM10", "O3", "CO", "NOX", "NO2", "NO", "SO2", "PM25")
+years <- start_year:end_year
 
-mapply(function(url) 
-  system(paste("wget -r -np -t1 -nd -A.csv", 
-               url)),url = paste0(url_wo_year[1], start_year:end_year, url_wo_year[2]))
+for(t in types){
+  for(y in years){
+    if(!(y == "2013" & t == "NOX")){ # Missing NOX for 2013, so we skip so loop continues
+      download.file(paste0("https://data-donnees.ec.gc.ca/data/air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/", y, "/ContinuousData-DonneesContinu/HourlyData-DonneesHoraires/", t, "_", y, ".csv"), 
+                    destfile = paste0(getwd(),"/", t, "_", y, ".csv"), method = "wget", quiet = TRUE, mode = "wb")
+    }
+  }
+}
+
 
 
 setwd(paste0(wd$data ))

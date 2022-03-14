@@ -1,0 +1,97 @@
+---
+title: "Models with spec data"
+author: "Shannon Jarvis"
+date: "6/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+ ggplot(data = spec_data, mapping = aes(x = date, y = spec_pm2_5)) + 
+  #geom_point() +
+  geom_line() +
+  facet_wrap( ~ city, nrow = 3) 
+
+
+```
+
+
+# GAM model 
+This is the classical form on the model (does not use a prior)
+
+```{r}
+library(mgcv)
+mod_lm2 <- gam(spec_pm2_5 ~season + city + ammonia_ic_spec_ammonia + myso2 + 
+                 myhno3 + ANO3_dat + ASO4_dat + EC_dat + SOIL_dat + NaCl_dat + 
+                 PBW_dat + OM_dat, data=spec_data)
+summary(mod_lm2 )
+
+plot(mod_lm2, shade = TRUE)
+gam.check(mod_lm2)
+```
+
+
+# Stan model
+For Bayesian analysis,Stan runs sets of posterior simulations 
+```{r}
+stanmodelcode = "
+data {
+  int<lower=0> J;
+  real samSE[J];
+  real betahat[J];
+}
+parameters {
+  real Mu;
+  real<lower=0> Sigma;  
+  real citybeta[J];
+}
+model {
+  Mu ~ normal(0, 10);
+  Sigma ~ uniform(0, 1);
+
+  for(j in 1 : J) {
+    citybeta[j] ~ normal(Mu, Sigma);
+    betahat[j] ~ normal(citybeta[j], samSE[j]);
+  }
+}
+"
+
+```
+
+# now lets try runnig STAN with the estimates!
+```{r}
+sims_stan <- vector("list", 1)
+sims_stan <- lapply(sims_stan, FUN = function(x) { vector("list", 20) }) #b.c. 20 top cities 
+rstan_options(auto_write = TRUE)
+
+# pre-compile the Stan model
+
+input_est <- results[1:20, 1]   
+input_ste <- results[1:20, 2]
+  
+
+data.len <- length(input_est)
+data.info = list(J = data.len, betahat = input_est, samSE = input_ste)
+inits.info = list(list(Mu = 1e-3, Sigma = 0.1, citybeta = rep(0.0007, data.len)))
+
+fit <- stan(model_code = stanmodelcode, data = data.info, init = rep(inits.info, 3),
+            pars = c("Mu", "Sigma"), chains = 3, iter = 32000, warmup = 2000,
+            thin = 10, control = list(adapt_delta = 0.9))
+  
+
+
+sim <- stan(fit = fit, data = data.info)
+res <- extract(sim)
+summary(sim)$summary[1:22, ]
+
+# Stan national estimate of top 20 cities for all years combined 
+# mu = 0.0003611393 +/- 6.973783e-05
+# sigma = 0.0001594672 +/- 5.566133e-05
+
+# also get the city estimates 
+
+
+```
